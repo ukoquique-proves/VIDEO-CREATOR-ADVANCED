@@ -11,6 +11,8 @@
 - `run_test_video.py` — smoke-test script for manual end-to-end pipeline verification
 - `src/main.py` and `src/__main__.py` — clean CLI implementation supporting both YAML and JSON configs, with proper error surfacing
 - `config/example_english.yaml` and `config/example_spanish.yaml` — useful reference documents for testing the CLI
+- `src/ui.py` — new Streamlit application providing an interactive window UI for configuring and generating videos
+- `requirements.txt` — added `streamlit>=1.20.0` dependency for the new UI
 
 ### Changed
 - `src/assembler_adapter.py` — subtitle burn-in delegated to `subtitle_renderer.burn_subtitles()`; Lingo interaction delegated to `LingoAssemblerBackend`; file reduced from ~390 lines to ~110
@@ -20,6 +22,9 @@
 - `src/orchestrator.py` — passes `tts_backend` and `image_engine`/`image_style` from `VideoConfiguration` down to the respective adapters
 - `tests/test_adapters.py` — `TestSubtitleRenderer` removed (moved to `test_subtitle_renderer.py`); `TestAssemblerAdapter` updated to mock `LingoAssemblerBackend` and `subtitle_renderer.burn_subtitles` instead of the removed private functions
 - `src/schema.py` — `VideoConfiguration` gains a `language` field as a string enum (`Language.ENGLISH` default), supporting multi-language TTS
+- `src/schema.py` — `VideoConfiguration` gains an `orientation` field using a new `Orientation` string enum (`VERTICAL`, `HORIZONTAL`), defaulting to vertical
+- `src/orchestrator.py` — `create_video` now calculates `aspect_ratio`, `width`, and `height` based on the chosen orientation and dynamically passes them to downstream adapters
+- `src/image_adapter.py` — `generate_from_prompts` and `_generate_placeholder_images` updated to explicitly accept and use `width` and `height`, ensuring generated and placeholder images respect the requested orientation
 - `src/assembler_adapter.py` — Backend injection improved with a module-level `_default_backend = LingoAssemblerBackend()` instantiated once and passed via `backend=` parameter to `assemble_video`, replacing fragile mock patching
 
 ### Fixed
