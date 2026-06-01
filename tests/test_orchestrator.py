@@ -82,12 +82,16 @@ def _patch_adapters():
     """Mock all external adapters so tests are fast and offline."""
     with (
         patch("src.orchestrator.tts_adapter.generate_speech", side_effect=_mock_generate_speech),
-        patch("src.orchestrator.image_adapter.generate_from_prompts", side_effect=_mock_generate_from_prompts),
+        patch("src.orchestrator.image_adapter.generate_from_prompts", side_effect=_mock_generate_from_prompts) as mock_gen,
         patch("src.orchestrator.image_adapter.copy_provided_images", side_effect=_mock_copy_images),
         patch("src.orchestrator.image_adapter.modify_images", side_effect=lambda paths, _instr: paths) as mock_modify,
-        patch("src.orchestrator.assembler_adapter.assemble_video", side_effect=_mock_assemble_video),
+        patch("src.orchestrator.assembler_adapter.assemble_video", side_effect=_mock_assemble_video) as mock_assemble,
     ):
-        yield {"modify_images": mock_modify}
+        yield {
+            "modify_images": mock_modify,
+            "generate_from_prompts": mock_gen,
+            "assemble_video": mock_assemble,
+        }
 
 
 # --------------------------------------------------------------------------- #
@@ -247,3 +251,36 @@ class TestNoVisualsRaises:
         )
         with pytest.raises(ValueError, match="No visual assets"):
             orch.create_video(cfg)
+
+
+class TestHorizontalOrientation:
+    """Verify that horizontal orientation flips width/height and sets aspect ratio to 16:9."""
+
+    def test_horizontal_orientation(self, tmp_output_dir, _patch_adapters):
+        from src.schema import Orientation
+        orch = VideoOrchestrator(output_dir=tmp_output_dir)
+        cfg = VideoConfiguration(
+            title="Horizontal Video",
+            speech_content="Testing horizontal.",
+            visual_assets=VisualAssetConfig(
+                asset_type=VisualAssetType.TEXT_PROMPTS,
+                prompts=["A landscape"],
+            ),
+            orientation=Orientation.HORIZONTAL,
+        )
+        orch.create_video(cfg)
+
+        # Check generate_from_prompts args
+        mock_gen = _patch_adapters["generate_from_prompts"]
+        mock_gen.assert_called_once()
+        _, kwargs_gen = mock_gen.call_args
+        assert kwargs_gen.get("aspect_ratio") == "16:9"
+        assert kwargs_gen.get("width") == 1920
+        assert kwargs_gen.get("height") == 1080
+
+        # Check assemble_video args
+        mock_assemble = _patch_adapters["assemble_video"]
+        mock_assemble.assert_called_once()
+        _, kwargs_asm = mock_assemble.call_args
+        assert kwargs_asm.get("width") == 1920
+        assert kwargs_asm.get("height") == 1080
