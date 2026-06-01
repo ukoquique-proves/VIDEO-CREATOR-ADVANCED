@@ -25,8 +25,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from src.schema import VideoConfiguration, VisualAssetType, Orientation
-from src import tts_adapter, image_adapter, subtitle_adapter, assembler_adapter
-from src import config_loader
+from src import tts_adapter, image_adapter, subtitle_adapter, assembler_adapter, config_loader
 
 logger = logging.getLogger(__name__)
 
