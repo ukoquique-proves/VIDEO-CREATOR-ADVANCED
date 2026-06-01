@@ -117,7 +117,8 @@ def main():
                 
                 # Try to display the video if it's playable in browser (mp4/webm)
                 if result['format'] in ['mp4', 'webm']:
-                    st.video(result['output_path'])
+                    with open(result['output_path'], 'rb') as f:
+                        st.video(f.read())
                 else:
                     st.info("Video format is not supported for in-browser playback. Check the output directory.")
                     
