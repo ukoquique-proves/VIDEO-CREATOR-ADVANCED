@@ -29,6 +29,7 @@
 
 ## Phase 4: Advanced Video Features
 - [x] Own subtitle burn-in with correct descender rendering, independent of Lingo — `_burn_subtitles` + `_render_subtitle_frame` use `font.getmetrics()` (ascent + descent) instead of `textbbox`; Lingo always receives `add_captions=False` to prevent double rendering and bypass its clipping bug
+- [x] Dynamic orientation support (Vertical 9:16 and Horizontal 16:9) and dimension resolution
 - [ ] Whisper-based forced subtitle alignment (replace word-rate estimation)
 - [ ] Ken Burns effect on images (pan + zoom animations)
 - [ ] Smooth crossfade transitions between scenes
@@ -40,9 +41,9 @@
 ## Phase 5: CLI & API Interface
 - [x] Create CLI tool (`python -m src.main --config video.yaml`) — reads YAML/JSON, validates schema, runs pipeline (Note: original roadmap specified `python -m videocreation`, which requires a proper package install via `pip install -e .` and a `pyproject.toml`)
 - [x] Add YAML example configs (`config/example_english.yaml`, `config/example_spanish.yaml`)
+- [x] Streamlit UI for interactive configuration (`src/ui.py`)
 - [ ] Add YAML-based batch processing (create multiple videos from one config)
 - [ ] REST API endpoint for remote video generation
-- [ ] Streamlit UI for interactive configuration
 - [ ] Progress callbacks and real-time status updates
 
 ## Phase 6: Production Hardening
