@@ -1,0 +1,20 @@
+# Example: English video with AI-generated images and subtitles
+#
+# Run with:
+#   python -m src.main --config config/example_english.yaml
+
+title: "Introduction to Permaculture"
+language: en
+length_seconds: 30
+speech_content: |
+  Permaculture is a design philosophy that works with nature rather than against it.
+  By observing natural patterns, we can create productive and sustainable systems
+  that provide food, energy, and community resilience.
+visual_assets:
+  asset_type: "text_prompts"
+  prompts:
+    - "A lush permaculture garden with diverse plants and pathways"
+    - "Hands planting seeds in rich dark soil"
+    - "A sustainable homestead surrounded by food forests"
+subtitles_enabled: true
+output_format: "mp4"

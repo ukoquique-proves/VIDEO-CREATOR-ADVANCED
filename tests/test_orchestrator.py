@@ -1,0 +1,249 @@
+"""
+Integration tests for the VideoOrchestrator.
+
+Each test exercises a distinct creation flow as required by the project spec:
+  1. Minimal video (images + speech, no subtitles)
+  2. AI image generation from text prompts
+  3. Video with subtitles enabled
+  4. Video with background music
+  5. Custom output format (.webm)
+
+All external calls (TTS, AI image gen, video assembly) are mocked so tests
+run fast and without network access.
+"""
+
+import os
+import pytest
+from unittest.mock import patch, MagicMock
+from pathlib import Path
+
+from src.schema import (
+    VideoConfiguration,
+    VisualAssetConfig,
+    VisualAssetType,
+    OutputFormat,
+)
+from src.orchestrator import VideoOrchestrator
+
+
+# --------------------------------------------------------------------------- #
+# Helpers
+# --------------------------------------------------------------------------- #
+
+def _mock_generate_speech(text, output_path, **kwargs):
+    """Create a tiny file to simulate TTS output."""
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    Path(output_path).write_text("fake-audio")
+    return output_path
+
+
+def _mock_generate_from_prompts(prompts, output_dir, **kwargs):
+    """Create tiny PNG stubs to simulate AI image generation."""
+    from PIL import Image
+    os.makedirs(output_dir, exist_ok=True)
+    paths = []
+    for i, _ in enumerate(prompts):
+        p = os.path.join(output_dir, f"gen_{i}.png")
+        Image.new("RGB", (64, 64), (100, 100, 100)).save(p)
+        paths.append(p)
+    return paths
+
+
+def _mock_copy_images(image_paths, output_dir):
+    """Copy images by creating stubs."""
+    import shutil
+    os.makedirs(output_dir, exist_ok=True)
+    copied = []
+    for src in image_paths:
+        if os.path.isfile(src):
+            dst = os.path.join(output_dir, os.path.basename(src))
+            shutil.copy2(src, dst)
+            copied.append(dst)
+    return copied
+
+
+def _mock_assemble_video(audio_path, visual_files, segments, **kwargs):
+    """Write a stub file to simulate video assembly."""
+    output_dir = kwargs.get("output_dir", "/tmp")
+    fmt = kwargs.get("output_format", "mp4")
+    title = kwargs.get("title", "test")
+    os.makedirs(output_dir, exist_ok=True)
+    out = os.path.join(output_dir, f"{title.replace(' ', '_')}.{fmt}")
+    Path(out).write_text("fake-video")
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# Patches applied to every test in this module
+# --------------------------------------------------------------------------- #
+
+@pytest.fixture(autouse=True)
+def _patch_adapters():
+    """Mock all external adapters so tests are fast and offline."""
+    with (
+        patch("src.orchestrator.tts_adapter.generate_speech", side_effect=_mock_generate_speech),
+        patch("src.orchestrator.image_adapter.generate_from_prompts", side_effect=_mock_generate_from_prompts),
+        patch("src.orchestrator.image_adapter.copy_provided_images", side_effect=_mock_copy_images),
+        patch("src.orchestrator.image_adapter.modify_images", side_effect=lambda paths, _instr: paths) as mock_modify,
+        patch("src.orchestrator.assembler_adapter.assemble_video", side_effect=_mock_assemble_video),
+    ):
+        yield {"modify_images": mock_modify}
+
+
+# --------------------------------------------------------------------------- #
+# Test Flows
+# --------------------------------------------------------------------------- #
+
+class TestMinimalVideo:
+    """Flow 1: Minimal video — title + speech + 1 image, no subtitles, mp4."""
+
+    def test_minimal_video(self, sample_images, tmp_output_dir):
+        orch = VideoOrchestrator(output_dir=tmp_output_dir)
+        cfg = VideoConfiguration(
+            title="Minimal",
+            speech_content="Short test sentence.",
+            visual_assets=VisualAssetConfig(
+                asset_type=VisualAssetType.IMAGE_SEQUENCE,
+                images=sample_images[:1],
+            ),
+        )
+        result = orch.create_video(cfg)
+
+        assert "output_path" in result
+        assert result["output_path"].endswith(".mp4")
+        assert result["title"] == "Minimal"
+        assert result["subtitles_enabled"] is False
+        assert os.path.isfile(result["output_path"])
+
+
+class TestAIImageGeneration:
+    """Flow 2: AI image generation — text prompts instead of image files."""
+
+    def test_ai_image_prompts(self, tmp_output_dir):
+        orch = VideoOrchestrator(output_dir=tmp_output_dir)
+        cfg = VideoConfiguration(
+            title="AI Images",
+            speech_content="Testing AI image generation from prompts.",
+            visual_assets=VisualAssetConfig(
+                asset_type=VisualAssetType.TEXT_PROMPTS,
+                prompts=["A futuristic city", "A forest at dawn"],
+            ),
+        )
+        result = orch.create_video(cfg)
+
+        assert "output_path" in result
+        assert os.path.isfile(result["output_path"])
+
+
+class TestVideoWithSubtitles:
+    """Flow 3: Video with subtitles enabled."""
+
+    def test_subtitles(self, sample_images, tmp_output_dir):
+        orch = VideoOrchestrator(output_dir=tmp_output_dir)
+        cfg = VideoConfiguration(
+            title="Subtitled",
+            speech_content="This video should have burned-in subtitles for accessibility.",
+            visual_assets=VisualAssetConfig(
+                asset_type=VisualAssetType.IMAGE_SEQUENCE,
+                images=sample_images,
+            ),
+            subtitles_enabled=True,
+        )
+        result = orch.create_video(cfg)
+
+        assert result["subtitles_enabled"] is True
+        assert os.path.isfile(result["output_path"])
+
+
+class TestWithBackgroundMusic:
+    """Flow 4: Video with background music."""
+
+    def test_background_music(self, sample_images, sample_audio, tmp_output_dir):
+        orch = VideoOrchestrator(output_dir=tmp_output_dir)
+        cfg = VideoConfiguration(
+            title="With Music",
+            speech_content="Testing background music integration.",
+            visual_assets=VisualAssetConfig(
+                asset_type=VisualAssetType.IMAGE_SEQUENCE,
+                images=sample_images,
+            ),
+            background_music=sample_audio,
+        )
+        result = orch.create_video(cfg)
+
+        assert os.path.isfile(result["output_path"])
+
+
+class TestCustomOutputFormat:
+    """Flow 5: Custom output format (.webm)."""
+
+    def test_webm_output(self, sample_images, tmp_output_dir):
+        orch = VideoOrchestrator(output_dir=tmp_output_dir)
+        cfg = VideoConfiguration(
+            title="WebM Test",
+            speech_content="Output as WebM format.",
+            visual_assets=VisualAssetConfig(
+                asset_type=VisualAssetType.IMAGE_SEQUENCE,
+                images=sample_images,
+            ),
+            output_format=OutputFormat.WEBM,
+        )
+        result = orch.create_video(cfg)
+
+        assert result["format"] == "webm"
+        assert result["output_path"].endswith(".webm")
+        assert os.path.isfile(result["output_path"])
+
+
+class TestImageModification:
+    """image_modification_instructions must be forwarded to modify_images."""
+
+    def test_modify_images_called_with_instructions(self, sample_images, tmp_output_dir, _patch_adapters):
+        orch = VideoOrchestrator(output_dir=tmp_output_dir)
+        cfg = VideoConfiguration(
+            title="Modified",
+            speech_content="Test image modification.",
+            visual_assets=VisualAssetConfig(
+                asset_type=VisualAssetType.IMAGE_SEQUENCE,
+                images=sample_images,
+            ),
+            image_modification_instructions="Apply sepia filter",
+        )
+        result = orch.create_video(cfg)
+
+        mock_modify = _patch_adapters["modify_images"]
+        mock_modify.assert_called_once()
+        _args, _kwargs = mock_modify.call_args
+        assert _args[1] == "Apply sepia filter"
+        assert os.path.isfile(result["output_path"])
+
+    def test_modify_images_not_called_without_instructions(self, sample_images, tmp_output_dir, _patch_adapters):
+        orch = VideoOrchestrator(output_dir=tmp_output_dir)
+        cfg = VideoConfiguration(
+            title="No Modify",
+            speech_content="No modification instructions.",
+            visual_assets=VisualAssetConfig(
+                asset_type=VisualAssetType.IMAGE_SEQUENCE,
+                images=sample_images,
+            ),
+        )
+        orch.create_video(cfg)
+
+        _patch_adapters["modify_images"].assert_not_called()
+
+
+class TestNoVisualsRaises:
+    """Edge case: no visuals provided should raise ValueError."""
+
+    def test_empty_images(self, tmp_output_dir):
+        orch = VideoOrchestrator(output_dir=tmp_output_dir)
+        cfg = VideoConfiguration(
+            title="Empty",
+            speech_content="No visuals here.",
+            visual_assets=VisualAssetConfig(
+                asset_type=VisualAssetType.IMAGE_SEQUENCE,
+                images=[],
+            ),
+        )
+        with pytest.raises(ValueError, match="No visual assets"):
+            orch.create_video(cfg)

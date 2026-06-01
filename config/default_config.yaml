@@ -1,0 +1,52 @@
+# VideoCreation — Default Configuration
+# Mirrors relevant settings from Lingo_PERSONAS config.yaml
+
+## TTS Settings
+tts:
+  method: "edge_tts"        # Free, no API key required
+  voice: "en-US-GuyNeural"  # Default voice (used when no language is specified)
+  # Per-language default voices (edge_tts voice names)
+  # Override any entry here to change the default for that language.
+  language_voices:
+    en: "en-US-GuyNeural"
+    es: "es-AR-TomasNeural"
+    zh: "zh-CN-YunxiNeural"
+    fr: "fr-FR-HenriNeural"
+    de: "de-DE-ConradNeural"
+    pt: "pt-BR-AntonioNeural"
+
+## Image Generation
+image:
+  style: "photorealistic"
+  aspect_ratio: "9:16"       # Portrait (TikTok/Shorts/Reels)
+  engine: "pollinations"     # Free AI image provider
+
+## Video Output
+video:
+  width: 1080
+  height: 1920
+  fps: 30
+  bitrate: "8000k"
+  default_format: "mp4"
+
+## Subtitle Settings
+subtitles:
+  font: "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
+  font_size: 54
+  font_color: "white"
+  stroke_color: "black"
+  stroke_width: 2
+  position: "bottom"
+  margin: 300
+  words_per_second: 2.5
+  max_words_per_chunk: 10
+  max_chars_per_line: 32   # wrap text before this many characters per line
+
+## Transitions
+transitions:
+  fade_duration: 0.5
+  image_duration: 3.0
+
+## Lingo_PERSONAS
+lingo:
+  root: "/root/a_VIDEO_GENERATION/VIDEO_PERSONAS/Lingo_PERSONAS"

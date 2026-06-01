@@ -1,0 +1,20 @@
+# Ejemplo: Video en español con imágenes provistas y subtítulos
+#
+# Ejecutar con:
+#   python -m src.main --config config/example_spanish.yaml
+
+title: "Proyecto Permacultura"
+language: es
+length_seconds: 60
+speech_content: |
+  La permacultura es una filosofía de diseño que trabaja con la naturaleza.
+  Observando los patrones naturales, podemos crear sistemas productivos y sostenibles
+  que proveen alimentos, energía y resiliencia comunitaria.
+  El secreto está en el diseño y el orden.
+visual_assets:
+  asset_type: "text_prompts"
+  prompts:
+    - "Un jardín de permacultura exuberante con plantas diversas"
+    - "Manos plantando semillas en tierra fértil oscura"
+subtitles_enabled: true
+output_format: "mp4"

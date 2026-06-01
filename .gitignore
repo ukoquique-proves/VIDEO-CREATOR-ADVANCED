@@ -1,0 +1,18 @@
+# Video outputs
+output/
+*.mp4
+*.mov
+*.avi
+*.webm
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
