@@ -39,8 +39,10 @@ def generate_subtitle_segments(
         Each dict has keys ``text``, ``start``, ``end``, ``duration_estimate``.
     """
     cfg = config_loader.subtitles()
-    words_per_second = words_per_second or cfg.get("words_per_second", 2.5)
-    max_words_per_chunk = max_words_per_chunk or cfg.get("max_words_per_chunk", 10)
+    if words_per_second is None:
+        words_per_second = cfg.get("words_per_second", 2.5)
+    if max_words_per_chunk is None:
+        max_words_per_chunk = cfg.get("max_words_per_chunk", 10)
 
     words = text.split()
     if not words:
@@ -67,7 +69,7 @@ def generate_subtitle_segments(
     total_raw = sum(raw_durations)
 
     # Scale to fit total_duration if provided
-    if total_duration and total_raw > 0:
+    if total_duration is not None and total_duration > 0 and total_raw > 0:
         scale = total_duration / total_raw
         durations = [d * scale for d in raw_durations]
     else:

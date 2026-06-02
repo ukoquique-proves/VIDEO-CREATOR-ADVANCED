@@ -21,6 +21,7 @@ Usage::
 
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -28,6 +29,19 @@ from src.schema import VideoConfiguration, VisualAssetType, Orientation
 from src import tts_adapter, image_adapter, subtitle_adapter, assembler_adapter, config_loader
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_title(title: str) -> str:
+    """Return a filesystem-safe version of *title*.
+
+    Replaces spaces with underscores and strips characters that are
+    illegal on Linux, macOS, or Windows (/ : * ? " < > | and null bytes).
+    """
+    sanitized = re.sub(r'[/\\:*?"<>|\x00]', "_", title)
+    sanitized = sanitized.replace(" ", "_")
+    # Collapse multiple consecutive underscores and strip leading/trailing ones
+    sanitized = re.sub(r'_+', "_", sanitized).strip("_")
+    return sanitized or "untitled"
 
 
 class VideoOrchestrator:
@@ -57,7 +71,7 @@ class VideoOrchestrator:
         logger.info("=== Starting video generation: %s ===", config.title)
 
         # 1. Prepare workspace
-        workspace = self.output_dir / config.title.replace(" ", "_")
+        workspace = self.output_dir / _sanitize_title(config.title)
         workspace.mkdir(parents=True, exist_ok=True)
 
         # 2. Generate audio from speech text

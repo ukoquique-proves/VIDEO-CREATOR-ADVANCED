@@ -43,8 +43,10 @@ def generate_from_prompts(
         Style preset override for this video. Takes precedence over config.
     """
     cfg = config_loader.image()
-    style = style or cfg.get("style", "photorealistic")
-    aspect_ratio = aspect_ratio or cfg.get("aspect_ratio", "9:16")
+    if style is None:
+        style = cfg.get("style", "photorealistic")
+    if aspect_ratio is None:
+        aspect_ratio = cfg.get("aspect_ratio", "9:16")
     # engine is passed through to _try_footage_generator; config default used there
     os.makedirs(output_dir, exist_ok=True)
 
@@ -108,7 +110,6 @@ def _try_footage_generator(
         from shorts_creator.footage_generator_v2 import FootageGeneratorV2  # type: ignore[import-untyped]
 
         cfg = config_loader.image()
-        resolved_engine = engine or cfg.get("engine", "pollinations")
 
         gen = FootageGeneratorV2(output_dir=output_dir)
         paths = gen.generate_images_batch(
@@ -116,7 +117,6 @@ def _try_footage_generator(
             style=style,
             aspect_ratio=aspect_ratio,
             delay=1.0,
-            provider=resolved_engine,
         )
         if paths:
             return paths
@@ -140,8 +140,10 @@ def _generate_placeholder_images(
     from PIL import Image, ImageDraw, ImageFont
 
     vcfg = config_loader.video()
-    width = width or vcfg.get("width", 1080)
-    height = height or vcfg.get("height", 1920)
+    if width is None:
+        width = vcfg.get("width", 1080)
+    if height is None:
+        height = vcfg.get("height", 1920)
 
     paths: List[str] = []
     for idx, prompt in enumerate(prompts):

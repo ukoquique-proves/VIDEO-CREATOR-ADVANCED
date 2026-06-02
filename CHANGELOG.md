@@ -3,6 +3,25 @@
 ## [Unreleased]
 
 ### Added
+- `config/test_quick.yaml` — minimal smoke-test config for quick end-to-end pipeline verification via CLI
+
+### Fixed
+- `src/image_adapter.py` — `_try_footage_generator()` was passing `provider=resolved_engine` to `FootageGeneratorV2.generate_images_batch()`, which the installed Lingo_PERSONAS version does not accept; this caused every AI image generation call to fail silently and fall back to Pillow placeholders. Removed the unsupported kwarg — the provider architecture is configured at `FootageGeneratorV2` construction time. Real Pollinations/HuggingFace image generation now works correctly.
+- `src/subtitle_adapter.py` — `words_per_second`, `max_words_per_chunk`, and `total_duration` checks replaced `or`-based falsy fallback with explicit `is None` guards; previously passing `0` or `0.0` was silently ignored and the config default was used instead
+- `src/subtitle_adapter.py` — `total_duration` scaling condition changed from `if total_duration` to `if total_duration is not None and total_duration > 0`; `total_duration=0` was previously treated as "not provided" due to falsiness
+- `src/tts_adapter.py` — `method` resolution replaced `or`-based fallback with `if method is None`; passing an empty string no longer silently falls back to `edge_tts`
+- `src/image_adapter.py` — `style`, `aspect_ratio`, `width`, and `height` resolution replaced `or`-based fallbacks with `if X is None` guards throughout `generate_from_prompts` and `_generate_placeholder_images`
+- `src/orchestrator.py` — video title sanitization replaced `title.replace(" ", "_")` with `_sanitize_title()`, which strips all filesystem-unsafe characters (`/`, `\`, `:`, `*`, `?`, `"`, `<`, `>`, `|`, null bytes), collapses consecutive underscores, and falls back to `"untitled"` for blank results; previously a title like `"My/Video"` would silently create nested directories
+
+### Changed
+- `src/orchestrator.py` — added `_sanitize_title()` helper function; `create_video()` now uses it instead of the bare `.replace(" ", "_")` call
+
+### Roadmap corrections
+- `ROADMAP.md` Phase 3 — marked three items as already complete: Pollinations integration, HuggingFace Flux/SDXL provider with automatic failover, and image style preset support; all three are implemented in Lingo_PERSONAS `FootageGeneratorV2` and were already being exercised by the adapter
+
+---
+
+### Added
 - `src/subtitle_renderer.py` — new module with `burn_subtitles()` and `render_subtitle_frame()`; extracted from `assembler_adapter.py` so subtitle rendering is independently testable and extensible
 - `src/backends/__init__.py` — `AssemblerBackend` protocol defining the stable interface all assembler backends must satisfy
 - `src/backends/lingo_assembler_backend.py` — `LingoAssemblerBackend` class encapsulating all Lingo_PERSONAS VideoAssembler interaction; `assembler_adapter` no longer has direct knowledge of Lingo's API surface

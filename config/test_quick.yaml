@@ -1,0 +1,18 @@
+# Quick smoke-test video — short speech, AI-generated images, subtitles on
+#
+# Run with:
+#   python -m src.main --config config/test_quick.yaml
+
+title: "Quick Test Video"
+language: en
+speech_content: |
+  This is a quick test of the video pipeline.
+  Everything looks good. Let's go.
+visual_assets:
+  asset_type: "text_prompts"
+  prompts:
+    - "A bright sunrise over mountains, cinematic"
+    - "A calm blue ocean with gentle waves"
+subtitles_enabled: true
+output_format: "mp4"
+orientation: "vertical"

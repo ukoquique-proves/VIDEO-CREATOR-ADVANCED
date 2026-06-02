@@ -64,7 +64,8 @@ def generate_speech(
         The absolute path to the generated audio file.
     """
     cfg = config_loader.tts()
-    method = method or cfg.get("method", "edge_tts")
+    if method is None:
+        method = cfg.get("method", "edge_tts")
 
     # Voice resolution: explicit > language default > config default > hardcoded
     if voice:
