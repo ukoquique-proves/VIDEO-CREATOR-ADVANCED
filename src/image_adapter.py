@@ -65,7 +65,7 @@ def generate_from_prompts(
         logger.info("Picsum skipped due to engine='%s' or config.", engine)
 
     # 2. FootageGeneratorV2 (Lingo)
-    lingo_paths = _try_footage_generator(prompts, output_dir, style, aspect_ratio, engine=engine)
+    lingo_paths = _try_footage_generator(prompts, output_dir, style, aspect_ratio)
     if lingo_paths:
         return lingo_paths
 
