@@ -18,7 +18,7 @@ def load() -> Dict[str, Any]:
             with open(_CONFIG_PATH, "r") as f:
                 _cache.update(yaml.safe_load(f))
         except FileNotFoundError:
-            raise FileNotFoundError(
+            raise RuntimeError(
                 f"VideoCreation config not found: {_CONFIG_PATH}\n"
                 "Ensure 'config/default_config.yaml' exists at the project root."
             ) from None

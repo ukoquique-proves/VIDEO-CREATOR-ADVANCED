@@ -43,6 +43,7 @@ Built on top of the [Lingo_PERSONAS](../../../VIDEO_PERSONAS/Lingo_PERSONAS/) en
 | `src/backends/lingo_assembler_backend.py` | Lingo_PERSONAS VideoAssembler encapsulated behind the backend interface |
 | `src/lingo_utils.py` | Shared Lingo_PERSONAS path injection utility |
 | `src/config_loader.py` | Reads and caches `config/default_config.yaml` |
+| `src/ui.py` | Streamlit UI for interactive video generation |
 | `src/main.py` | CLI entry point supporting YAML/JSON execution |
 | `src/__main__.py` | Package entry point relaying to `src.main` |
 | `config/default_config.yaml` | Default TTS/image/video/subtitle settings |

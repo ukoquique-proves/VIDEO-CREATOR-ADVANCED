@@ -65,7 +65,7 @@ def generate_from_prompts(
         logger.info("Picsum disabled via config (image.use_picsum: false).")
 
     # 2. FootageGeneratorV2 (Lingo)
-    lingo_paths = _try_footage_generator(prompts, output_dir, style, aspect_ratio, engine=engine)
+    lingo_paths = _try_footage_generator(prompts, output_dir, style, aspect_ratio)
     if lingo_paths:
         return lingo_paths
 
@@ -179,7 +179,6 @@ def _try_footage_generator(
     output_dir: str,
     style: str,
     aspect_ratio: str,
-    engine: Optional[str] = None,
 ) -> Optional[List[str]]:
     """Attempt to use FootageGeneratorV2 from Lingo_PERSONAS.
 

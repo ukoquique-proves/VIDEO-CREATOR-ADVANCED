@@ -20,7 +20,7 @@ image:
   style: "photorealistic"
   aspect_ratio: "9:16"       # Portrait (TikTok/Shorts/Reels)
   engine: "pollinations"     # Free AI image provider
-  use_picsum: true           # Fetch seeded stock photos from picsum.photos as fallback
+  use_picsum: false          # Fetch seeded stock photos from picsum.photos as fallback
 
 ## Pollinations Direct API
 pollinations:

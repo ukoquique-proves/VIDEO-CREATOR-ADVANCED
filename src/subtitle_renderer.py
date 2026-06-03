@@ -157,6 +157,7 @@ def render_subtitle_frame(
     ink bounding box and clips descenders for characters like p, q, g, y, j.
     """
     lines = textwrap.wrap(text, width=max_chars) or [text]
+    stroke_width = min(stroke_width, 8)  # clamp: O(n²) render cost
 
     ascent, descent = font.getmetrics()
     line_height   = ascent + descent
