@@ -2,7 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+- `src/schema.py` — added `PICSUM`, `UNSPLASH`, and `PEXELS` to `ImageEngine` enum to prepare for UI provider dropdowns
+- `src/image_adapter.py` — added `_picsum_batch()` fallback function that fetches deterministic stock images from picsum.photos using prompt-keyword-derived seeds
+- `config/demo_picsum.yaml` — new example configuration file demonstrating the Picsum fallback
+- `config/default_config.yaml` — added `use_picsum` boolean flag to the `image` block (defaulting to `true`) to allow disabling the network-dependent Picsum fallback offline
+
 ### Fixed
+- `src/assembler_adapter.py` — `_local_moviepy_assemble()` now properly crop-to-fills visual assets that don't match the target aspect ratio, eliminating letterboxing and pillarboxing
+- `src/image_adapter.py` — `generate_from_prompts()` routing logic now respects an explicitly passed `engine` parameter (e.g. `engine="pollinations"` skips Picsum entirely); previously the routing only checked the global `use_picsum` config flag
 - `src/subtitle_renderer.py` — `burn_subtitles()` now wraps `VideoFileClip` and `VideoClip` in `try/finally` blocks; `video.close()` and `composite.close()` are guaranteed to run even if an exception is raised mid-function, preventing file handle and ffmpeg subprocess leaks
 - `src/assembler_adapter.py` — `_local_moviepy_assemble()` now wraps clip operations in nested `try/finally` blocks; `audio.close()` and `video.close()` are guaranteed to run on exception, preventing resource leaks when multiple videos are generated in a session
 - `src/config_loader.py` — `load()` now catches `FileNotFoundError` and re-raises with the full resolved path to `default_config.yaml` and a hint to check the project root; previously a missing config would surface as a bare `FileNotFoundError` with no context

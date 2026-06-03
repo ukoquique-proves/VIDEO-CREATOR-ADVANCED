@@ -55,17 +55,17 @@ def generate_from_prompts(
 
     os.makedirs(output_dir, exist_ok=True)
 
-    # 1. Picsum seeded by prompt keywords (gated by config)
-    if cfg.get("use_picsum", True):
+    # 1. Picsum seeded by prompt keywords
+    if engine == "picsum" or (engine is None and cfg.get("use_picsum", True)):
         paths = _picsum_batch(prompts, output_dir, width, height)
         if paths:
             return paths
         logger.warning("Picsum failed or returned partial results — trying next provider.")
     else:
-        logger.info("Picsum disabled via config (image.use_picsum: false).")
+        logger.info("Picsum skipped due to engine='%s' or config.", engine)
 
     # 2. FootageGeneratorV2 (Lingo)
-    lingo_paths = _try_footage_generator(prompts, output_dir, style, aspect_ratio)
+    lingo_paths = _try_footage_generator(prompts, output_dir, style, aspect_ratio, engine=engine)
     if lingo_paths:
         return lingo_paths
 
