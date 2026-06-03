@@ -101,6 +101,29 @@ class TestImageAdapter:
         result = image_adapter.modify_images(sample_images, "brighten everything")
         assert result == sample_images
 
+    def test_engine_pollinations_skips_picsum(self, tmp_path):
+        """Passing engine='pollinations' should skip Picsum even if config has use_picsum=True."""
+        out_dir = str(tmp_path / "imgs")
+        with patch.object(image_adapter, "_picsum_batch", return_value=["fake.jpg"]) as mock_picsum, \
+             patch.object(image_adapter, "_try_footage_generator", return_value=["lingo.png"]) as mock_lingo:
+            paths = image_adapter.generate_from_prompts(["test"], out_dir, engine="pollinations")
+            
+        mock_picsum.assert_not_called()
+        mock_lingo.assert_called_once()
+        assert paths == ["lingo.png"]
+
+    def test_engine_picsum_forces_picsum(self, tmp_path):
+        """Passing engine='picsum' should use Picsum even if config has use_picsum=False."""
+        out_dir = str(tmp_path / "imgs")
+        with patch("src.image_adapter.config_loader.image", return_value={"use_picsum": False}), \
+             patch.object(image_adapter, "_picsum_batch", return_value=["fake.jpg"]) as mock_picsum, \
+             patch.object(image_adapter, "_try_footage_generator") as mock_lingo:
+            paths = image_adapter.generate_from_prompts(["test"], out_dir, engine="picsum")
+            
+        mock_picsum.assert_called_once()
+        mock_lingo.assert_not_called()
+        assert paths == ["fake.jpg"]
+
 
 # =========================================================================== #
 # Subtitle Adapter

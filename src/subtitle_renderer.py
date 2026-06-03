@@ -130,13 +130,12 @@ def burn_subtitles(
                 preset="ultrafast",
                 logger=None,
             )
+            logger.info("Subtitle burn-in complete → %s", output_path)
+            return output_path
         finally:
             composite.close()
     finally:
         video.close()
-
-    logger.info("Subtitle burn-in complete → %s", output_path)
-    return output_path
 
 
 def render_subtitle_frame(
