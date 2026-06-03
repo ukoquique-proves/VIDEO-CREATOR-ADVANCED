@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Fixed
+- `src/subtitle_renderer.py` — `burn_subtitles()` now wraps `VideoFileClip` and `VideoClip` in `try/finally` blocks; `video.close()` and `composite.close()` are guaranteed to run even if an exception is raised mid-function, preventing file handle and ffmpeg subprocess leaks
+- `src/assembler_adapter.py` — `_local_moviepy_assemble()` now wraps clip operations in nested `try/finally` blocks; `audio.close()` and `video.close()` are guaranteed to run on exception, preventing resource leaks when multiple videos are generated in a session
+- `src/config_loader.py` — `load()` now catches `FileNotFoundError` and re-raises with the full resolved path to `default_config.yaml` and a hint to check the project root; previously a missing config would surface as a bare `FileNotFoundError` with no context
+- `src/subtitle_renderer.py` — `burn_subtitles()` early-return warning now includes the reason and a hint about what to check (`text` non-empty, `end > start`), making silent subtitle drops visible to the caller
+- `src/subtitle_renderer.py` — `render_subtitle_frame()` clamps `stroke_width` to a maximum of 8 to prevent O(stroke_width²) render cost from a large config value
+- `src/image_adapter.py` — `modify_images()` stub promoted from `logger.info` to `logger.warning` with an explicit "NOT YET IMPLEMENTED" message; users setting `image_modification_instructions` now get visible feedback that no modification was applied
+- `src/image_adapter.py` — `_try_footage_generator()` exception handling split into two blocks: import/path failures (Lingo not installed) fall back silently to placeholders; runtime errors from Lingo code are logged at `ERROR` level and re-raised so genuine bugs are not swallowed
+
 ### Added
 - `config/test_quick.yaml` — minimal smoke-test config for quick end-to-end pipeline verification via CLI
 

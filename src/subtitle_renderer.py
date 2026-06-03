@@ -59,7 +59,7 @@ def burn_subtitles(
     font_size    = int(scfg.get("font_size", 54))
     font_color   = scfg.get("font_color", "white")
     stroke_color = scfg.get("stroke_color", "black")
-    stroke_width = int(scfg.get("stroke_width", 2))
+    stroke_width = min(int(scfg.get("stroke_width", 2)), 8)  # clamp: O(n²) render cost
     margin       = int(scfg.get("margin", 300))
     max_chars    = int(scfg.get("max_chars_per_line", 32))
 
@@ -70,65 +70,70 @@ def burn_subtitles(
         font = ImageFont.load_default()
 
     video = VideoFileClip(video_path)
-    fps = video.fps
+    try:
+        fps = video.fps
 
-    # Pre-render all subtitle frames as RGBA numpy arrays with their time ranges.
-    rendered: List[Dict] = []
-    for seg in segments:
-        text  = seg.get("text", "").strip()
-        start = seg.get("start", 0.0)
-        end   = seg.get("end", 0.0)
-        if not text or end <= start:
-            continue
+        # Pre-render all subtitle frames as RGBA numpy arrays with their time ranges.
+        rendered: List[Dict] = []
+        for seg in segments:
+            text  = seg.get("text", "").strip()
+            start = seg.get("start", 0.0)
+            end   = seg.get("end", 0.0)
+            if not text or end <= start:
+                continue
 
-        frame = render_subtitle_frame(
-            text=text,
-            width=width,
-            height=height,
-            font=font,
-            font_color=font_color,
-            stroke_color=stroke_color,
-            stroke_width=stroke_width,
-            margin=margin,
-            max_chars=max_chars,
-        )
-        rgba = np.array(frame, dtype=np.float32)  # H x W x 4, values 0-255
-        rendered.append({"start": start, "end": end, "rgba": rgba})
+            frame = render_subtitle_frame(
+                text=text,
+                width=width,
+                height=height,
+                font=font,
+                font_color=font_color,
+                stroke_color=stroke_color,
+                stroke_width=stroke_width,
+                margin=margin,
+                max_chars=max_chars,
+            )
+            rgba = np.array(frame, dtype=np.float32)  # H x W x 4, values 0-255
+            rendered.append({"start": start, "end": end, "rgba": rgba})
 
-    if not rendered:
+        if not rendered:
+            logger.warning(
+                "burn_subtitles: no valid subtitle segments to render — "
+                "returning original video without subtitles. "
+                "Check that segments have non-empty text and end > start."
+            )
+            return video_path
+
+        def make_frame(t: float) -> np.ndarray:
+            """Alpha-blend the active subtitle onto the video frame at time t."""
+            base = video.get_frame(t).astype(np.float32)  # H x W x 3, 0-255
+
+            for r in rendered:
+                if r["start"] <= t < r["end"]:
+                    rgba  = r["rgba"]
+                    alpha = rgba[:, :, 3:4] / 255.0  # normalise to 0-1
+                    rgb   = rgba[:, :, :3]
+                    base  = base * (1.0 - alpha) + rgb * alpha
+                    break  # only one subtitle active at a time
+
+            return base.clip(0, 255).astype(np.uint8)
+
+        composite = VideoClip(make_frame, duration=video.duration).with_audio(video.audio)
+        try:
+            output_path = os.path.join(output_dir, f"subtitled_{output_filename}")
+            composite.write_videofile(
+                output_path,
+                fps=fps,
+                codec="libx264",
+                audio_codec="aac",
+                threads=4,
+                preset="ultrafast",
+                logger=None,
+            )
+        finally:
+            composite.close()
+    finally:
         video.close()
-        logger.warning("No subtitle clips generated — returning video without subtitles.")
-        return video_path
-
-    def make_frame(t: float) -> np.ndarray:
-        """Alpha-blend the active subtitle onto the video frame at time t."""
-        base = video.get_frame(t).astype(np.float32)  # H x W x 3, 0-255
-
-        for r in rendered:
-            if r["start"] <= t < r["end"]:
-                rgba  = r["rgba"]
-                alpha = rgba[:, :, 3:4] / 255.0  # normalise to 0-1
-                rgb   = rgba[:, :, :3]
-                base  = base * (1.0 - alpha) + rgb * alpha
-                break  # only one subtitle active at a time
-
-        return base.clip(0, 255).astype(np.uint8)
-
-    composite = VideoClip(make_frame, duration=video.duration).with_audio(video.audio)
-
-    output_path = os.path.join(output_dir, f"subtitled_{output_filename}")
-    composite.write_videofile(
-        output_path,
-        fps=fps,
-        codec="libx264",
-        audio_codec="aac",
-        threads=4,
-        preset="ultrafast",
-        logger=None,
-    )
-
-    composite.close()
-    video.close()
 
     logger.info("Subtitle burn-in complete → %s", output_path)
     return output_path

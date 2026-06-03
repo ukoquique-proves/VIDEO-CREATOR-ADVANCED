@@ -45,13 +45,20 @@ This document outlines the steps required to build a Streamlit window user inter
 - [x] In `src/orchestrator.py`, replace `config.title.replace(" ", "_")` with a proper sanitizer that strips or replaces all filesystem-unsafe characters (`/`, `:`, `*`, `?`, `"`, `<`, `>`, `|`, null bytes) to prevent silent nested directory creation or path traversal.
 
 ### 6.3 Add `try/finally` resource cleanup
-- [ ] In `src/subtitle_renderer.py` `burn_subtitles()`, wrap the `VideoFileClip` and `VideoClip` usage in a `try/finally` block so `video.close()` and `composite.close()` are always called even if an exception is raised mid-function.
-- [ ] In `src/assembler_adapter.py` `_local_moviepy_assemble()`, wrap the clip operations in a `try/finally` block so `video.close()` and `audio.close()` are always called on exception.
+- [x] In `src/subtitle_renderer.py` `burn_subtitles()`, wrap the `VideoFileClip` and `VideoClip` usage in a `try/finally` block so `video.close()` and `composite.close()` are always called even if an exception is raised mid-function.
+- [x] In `src/assembler_adapter.py` `_local_moviepy_assemble()`, wrap the clip operations in a `try/finally` block so `video.close()` and `audio.close()` are always called on exception.
 
 ### 6.3.1 Fix FootageGeneratorV2 API mismatch
 - [x] In `src/image_adapter.py` `_try_footage_generator()`, remove the `provider=resolved_engine` keyword argument from the `gen.generate_images_batch()` call — the installed Lingo_PERSONAS version does not accept it and causes the call to always fail and fall back to Pillow placeholders. The engine/provider is already configured at the `FootageGeneratorV2` constructor level in Lingo, so the kwarg is unnecessary. After removing it, real AI image generation will work.
 
 ### 6.4 Minor / low-priority
-- [ ] In `src/config_loader.py` `load()`, catch `FileNotFoundError` and re-raise with a clear message pointing to the missing config path.
-- [ ] In `src/subtitle_renderer.py` `burn_subtitles()`, log a clear warning (not just `logger.warning`) when returning early with no rendered segments, so callers are not silently surprised.
-- [ ] In `src/subtitle_renderer.py` `render_subtitle_frame()`, clamp `stroke_width` to a reasonable maximum (e.g. 8) to prevent O(stroke_width²) render cost if a large value is set in config.
+- [x] In `src/config_loader.py` `load()`, catch `FileNotFoundError` and re-raise with a clear message pointing to the missing config path.
+- [x] In `src/subtitle_renderer.py` `burn_subtitles()`, log a clear warning (not just `logger.warning`) when returning early with no rendered segments, so callers are not silently surprised.
+- [x] In `src/subtitle_renderer.py` `render_subtitle_frame()`, clamp `stroke_width` to a reasonable maximum (e.g. 8) to prevent O(stroke_width²) render cost if a large value is set in config.
+
+## 7. Potential Further Fixes (verify before actioning)
+
+- [ ] `src/assembler_adapter.py` `_local_moviepy_assemble()` — `Resize(height=height)` scales to fit height but doesn't constrain width; for mismatched aspect ratios (e.g. a 16:9 image in a 9:16 video) this produces letterboxed or pillarboxed output. Consider a crop-after-resize to fill the frame completely.
+- [x] `src/image_adapter.py` `modify_images()` — stub silently returns originals; promoted to `logger.warning` with a clear "NOT YET IMPLEMENTED" marker so users setting `image_modification_instructions` get visible feedback.
+- [x] `src/image_adapter.py` `_try_footage_generator()` — `except Exception` previously swallowed all errors including genuine bugs; now split into two blocks: import/path failures silently fall back to placeholders, runtime errors from Lingo are logged at ERROR level and re-raised.
+- [ ] `src/tts_adapter.py` `LANGUAGE_VOICES` — adding a new `Language` enum value without a corresponding voice mapping fires the fallback warning silently. Consider asserting at module load that all `Language` values have a mapping, or moving the dict fully into `default_config.yaml`.

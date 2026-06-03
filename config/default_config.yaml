@@ -20,6 +20,15 @@ image:
   style: "photorealistic"
   aspect_ratio: "9:16"       # Portrait (TikTok/Shorts/Reels)
   engine: "pollinations"     # Free AI image provider
+  use_picsum: true           # Fetch seeded stock photos from picsum.photos as fallback
+
+## Pollinations Direct API
+pollinations:
+  timeout: 90               # seconds per image request
+  retries: 3                # attempts before giving up on a prompt
+  retry_delay: 5            # seconds to wait between retries
+  inter_image_delay: 2      # seconds to wait between successive images
+  base_url: "https://image.pollinations.ai/prompt/"
 
 ## Video Output
 video:

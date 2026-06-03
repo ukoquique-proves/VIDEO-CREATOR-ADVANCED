@@ -70,10 +70,11 @@ class TestTTSAdapter:
 
 class TestImageAdapter:
     def test_generate_placeholder_images(self, tmp_path):
-        """Placeholder images should be created when FootageGeneratorV2 is unavailable."""
+        """Placeholder images should be created when Picsum and FootageGeneratorV2 are unavailable."""
         out_dir = str(tmp_path / "imgs")
         prompts = ["A cat", "A dog", "A bird"]
-        with patch.object(image_adapter, "_try_footage_generator", return_value=None):
+        with patch.object(image_adapter, "_picsum_batch", return_value=[]), \
+             patch.object(image_adapter, "_try_footage_generator", return_value=None):
             paths = image_adapter.generate_from_prompts(prompts, out_dir)
         assert len(paths) == 3
         for p in paths:

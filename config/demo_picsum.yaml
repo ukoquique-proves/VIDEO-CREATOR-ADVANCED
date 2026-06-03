@@ -1,0 +1,15 @@
+title: "Picsum Demo Video"
+speech_content: >
+  Welcome to VideoCreation. This short demo shows the pipeline working end to end.
+  Each scene uses a different photo, matched to the topic being discussed.
+  The audio is synthesized from text, and subtitles are burned directly onto the frames.
+visual_assets:
+  asset_type: "text_prompts"
+  prompts:
+    - "A programmer coding at night with neon lights"
+    - "A futuristic city skyline at sunset"
+    - "A team collaborating around a whiteboard"
+subtitles_enabled: true
+orientation: "vertical"
+language: "en"
+output_format: "mp4"

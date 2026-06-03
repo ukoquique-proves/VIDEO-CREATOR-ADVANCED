@@ -129,31 +129,33 @@ def _local_moviepy_assemble(
     logger.info("Local moviepy assembly: %d visuals + audio", len(visual_files))
 
     audio = AudioFileClip(audio_path)
-    duration = audio.duration
-    time_per_visual = duration / max(len(visual_files), 1)
+    try:
+        duration = audio.duration
+        time_per_visual = duration / max(len(visual_files), 1)
 
-    clips = []
-    for vf in visual_files:
-        clip = ImageClip(vf).with_duration(time_per_visual)
-        clip = clip.with_effects([Resize(height=height)])
-        clips.append(clip)
+        clips = []
+        for vf in visual_files:
+            clip = ImageClip(vf).with_duration(time_per_visual)
+            clip = clip.with_effects([Resize(height=height)])
+            clips.append(clip)
 
-    video = concatenate_videoclips(clips, method="compose").with_audio(audio)
-
-    output_path = os.path.join(output_dir, output_filename)
-    fps = config_loader.video().get("fps", 30)
-    video.write_videofile(
-        output_path,
-        fps=fps,
-        codec="libx264",
-        audio_codec="aac",
-        threads=4,
-        preset="ultrafast",
-        logger=None,
-    )
-
-    video.close()
-    audio.close()
+        video = concatenate_videoclips(clips, method="compose").with_audio(audio)
+        try:
+            output_path = os.path.join(output_dir, output_filename)
+            fps = config_loader.video().get("fps", 30)
+            video.write_videofile(
+                output_path,
+                fps=fps,
+                codec="libx264",
+                audio_codec="aac",
+                threads=4,
+                preset="ultrafast",
+                logger=None,
+            )
+        finally:
+            video.close()
+    finally:
+        audio.close()
 
     logger.info("Local assembly complete → %s", output_path)
     return output_path

@@ -14,8 +14,14 @@ _cache: Dict[str, Any] = {}
 def load() -> Dict[str, Any]:
     """Return the parsed config dict (cached after first load)."""
     if not _cache:
-        with open(_CONFIG_PATH, "r") as f:
-            _cache.update(yaml.safe_load(f))
+        try:
+            with open(_CONFIG_PATH, "r") as f:
+                _cache.update(yaml.safe_load(f))
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                f"VideoCreation config not found: {_CONFIG_PATH}\n"
+                "Ensure 'config/default_config.yaml' exists at the project root."
+            ) from None
     return _cache
 
 
@@ -42,3 +48,7 @@ def subtitles() -> Dict[str, Any]:
 
 def lingo() -> Dict[str, Any]:
     return load().get("lingo", {})
+
+
+def pollinations() -> Dict[str, Any]:
+    return load().get("pollinations", {})
