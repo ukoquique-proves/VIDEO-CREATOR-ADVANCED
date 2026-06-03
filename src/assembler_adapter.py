@@ -119,7 +119,7 @@ def _local_moviepy_assemble(
     """
     try:
         from moviepy import AudioFileClip, ImageClip, concatenate_videoclips
-        from moviepy.video.fx import Resize
+        from moviepy.video.fx import Resize, Crop
     except ImportError as exc:
         raise RuntimeError(
             f"moviepy is required for local video assembly but could not be imported: {exc}. "
@@ -136,7 +136,16 @@ def _local_moviepy_assemble(
         clips = []
         for vf in visual_files:
             clip = ImageClip(vf).with_duration(time_per_visual)
-            clip = clip.with_effects([Resize(height=height)])
+            img_w, img_h = clip.size
+            
+            # Crop to fill
+            if (img_w / img_h) > (width / height):
+                clip = clip.with_effects([Resize(height=height)])
+            else:
+                clip = clip.with_effects([Resize(width=width)])
+            
+            cw, ch = clip.size
+            clip = clip.with_effects([Crop(width=width, height=height, x_center=cw//2, y_center=ch//2)])
             clips.append(clip)
 
         video = concatenate_videoclips(clips, method="compose").with_audio(audio)

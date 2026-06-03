@@ -38,7 +38,10 @@ class Orientation(str, Enum):
 
 class ImageEngine(str, Enum):
     POLLINATIONS = "pollinations"
-    HUGGINGFACE = "huggingface"
+    HUGGINGFACE  = "huggingface"
+    PICSUM       = "picsum"
+    UNSPLASH     = "unsplash"
+    PEXELS       = "pexels"
 
 
 class VisualAssetConfig(BaseModel):

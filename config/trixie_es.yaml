@@ -1,0 +1,17 @@
+title: "TrixieRetro para Programadores IA"
+language: es
+speech_content: |
+  TrixieRetro es una distribución minimalista basada en Puppy Linux, diseñada especialmente para programadores e inteligencia artificial.
+  Al cargar todo en RAM, ofrece una velocidad increíble incluso en equipos antiguos.
+  Con herramientas de desarrollo integradas y bajo consumo de recursos, es ideal para experimentar con modelos de IA local.
+  Descubre el poder de la eficiencia absoluta con TrixieRetro.
+visual_assets:
+  asset_type: "text_prompts"
+  prompts:
+    - "Un pingüino retro estilo cyberpunk programando en una computadora antigua"
+    - "Un microchip brillante procesando datos de inteligencia artificial a alta velocidad"
+    - "Una interfaz de terminal de computadora vintage mostrando código verde matrix"
+    - "Un cohete espacial despegando, simbolizando velocidad y eficiencia"
+subtitles_enabled: true
+output_format: "mp4"
+orientation: "vertical"
