@@ -14,19 +14,36 @@ from typing import Optional
 
 from src.lingo_utils import ensure_lingo_on_path
 from src import config_loader
+from src.schema import Language
 
 logger = logging.getLogger(__name__)
 
 # Default edge_tts voice per language code.
 # Full list: https://speech.microsoft.com/portal/voicegallery
 LANGUAGE_VOICES: dict = {
-    "en": "en-US-GuyNeural",
-    "es": "es-AR-TomasNeural",   # Rioplatense Spanish (Argentina)
-    "zh": "zh-CN-YunxiNeural",
-    "fr": "fr-FR-HenriNeural",
-    "de": "de-DE-ConradNeural",
-    "pt": "pt-BR-AntonioNeural",
+    Language.ENGLISH.value: "en-US-GuyNeural",
+    Language.SPANISH.value: "es-AR-TomasNeural",   # Rioplatense Spanish (Argentina)
+    Language.CHINESE.value: "zh-CN-YunxiNeural",
+    Language.FRENCH.value: "fr-FR-HenriNeural",
+    Language.GERMAN.value: "de-DE-ConradNeural",
+    Language.PORTUGUESE.value: "pt-BR-AntonioNeural",
 }
+
+
+# ---------------------------------------------------------------------------
+# Validation
+# ---------------------------------------------------------------------------
+
+def validate_voice_mappings():
+    """Ensure all languages defined in schema have a default voice mapping."""
+    for lang in Language:
+        if lang.value not in LANGUAGE_VOICES:
+            logger.error("Missing TTS voice mapping for language: %s", lang.name)
+            # We don't raise here to avoid breaking at startup, but it will log
+            # an error that should be caught during development/CI.
+
+# Validate on module import
+validate_voice_mappings()
 
 
 # ---------------------------------------------------------------------------

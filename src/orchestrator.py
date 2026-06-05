@@ -143,6 +143,9 @@ class VideoOrchestrator:
 
         logger.info("=== Video complete: %s ===", output_path)
 
+        # 7. Cleanup workspace temporary files
+        self._cleanup_workspace(workspace)
+
         return {
             "output_path": output_path,
             "workspace": str(workspace),
@@ -154,6 +157,28 @@ class VideoOrchestrator:
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
+
+    def _cleanup_workspace(self, workspace: Path) -> None:
+        """Remove temporary files and directories from the workspace.
+        
+        Keeps only the 'final' directory (if exists) or the final output file,
+        and the audio/visual assets that might be useful for reference.
+        Deletes 'temp' and other transient folders.
+        """
+        import shutil
+        temp_dir = workspace / "temp"
+        if temp_dir.exists():
+            logger.info("Cleaning up temporary directory: %s", temp_dir)
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        
+        # Add any other transient files to cleanup here if needed
+        # For example, moviepy often leaves .mp3TEMP_MPY_wvf_snd.mp4 files
+        for transient in workspace.glob("*TEMP_MPY*"):
+            try:
+                transient.unlink()
+                logger.info("Removed transient file: %s", transient)
+            except Exception as e:
+                logger.warning("Could not remove transient file %s: %s", transient, e)
 
     def _prepare_visuals(
         self, config: VideoConfiguration, workspace: str, aspect_ratio: str, width: int, height: int

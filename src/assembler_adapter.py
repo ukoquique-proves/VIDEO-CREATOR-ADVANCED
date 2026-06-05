@@ -138,12 +138,19 @@ def _local_moviepy_assemble(
             clip = ImageClip(vf).with_duration(time_per_visual)
             img_w, img_h = clip.size
             
-            # Crop to fill
-            if (img_w / img_h) > (width / height):
+            # 1. Resize so the smaller dimension matches the target dimension
+            # (ensure the image completely covers the target area)
+            target_ratio = width / height
+            img_ratio    = img_w / img_h
+            
+            if img_ratio > target_ratio:
+                # Image is wider than target aspect ratio -> scale by height
                 clip = clip.with_effects([Resize(height=height)])
             else:
+                # Image is taller than target aspect ratio -> scale by width
                 clip = clip.with_effects([Resize(width=width)])
             
+            # 2. Center crop to exactly width x height
             cw, ch = clip.size
             clip = clip.with_effects([Crop(width=width, height=height, x_center=cw//2, y_center=ch//2)])
             clips.append(clip)

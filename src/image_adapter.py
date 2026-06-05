@@ -57,7 +57,9 @@ def generate_from_prompts(
 
     # 1. Picsum seeded by prompt keywords
     if engine == "picsum" or (engine is None and cfg.get("use_picsum", True)):
-        paths = _picsum_batch(prompts, output_dir, width, height)
+        stock_dir = os.path.join(output_dir, "stock")
+        os.makedirs(stock_dir, exist_ok=True)
+        paths = _picsum_batch(prompts, stock_dir, width, height)
         if paths:
             return paths
         logger.warning("Picsum failed or returned partial results — trying next provider.")
@@ -65,25 +67,28 @@ def generate_from_prompts(
         logger.info("Picsum skipped due to engine='%s' or config.", engine)
 
     # 2. FootageGeneratorV2 (Lingo)
-    lingo_paths = _try_footage_generator(prompts, output_dir, style, aspect_ratio)
+    gen_dir = os.path.join(output_dir, "generated")
+    os.makedirs(gen_dir, exist_ok=True)
+    lingo_paths = _try_footage_generator(prompts, gen_dir, style, aspect_ratio)
     if lingo_paths:
         return lingo_paths
 
     # 3. Pillow placeholders
     logger.warning("FootageGeneratorV2 unavailable — using Pillow placeholder images.")
-    return _generate_placeholder_images(prompts, output_dir, width=width, height=height)
+    return _generate_placeholder_images(prompts, gen_dir, width=width, height=height)
 
 
 def copy_provided_images(image_paths: List[str], output_dir: str) -> List[str]:
     """Validate and copy user-provided images into the workspace."""
     import shutil
-    os.makedirs(output_dir, exist_ok=True)
+    cached_dir = os.path.join(output_dir, "cached")
+    os.makedirs(cached_dir, exist_ok=True)
     copied: List[str] = []
     for src in image_paths:
         if not os.path.isfile(src):
             logger.warning("Image not found, skipping: %s", src)
             continue
-        dst = os.path.join(output_dir, os.path.basename(src))
+        dst = os.path.join(cached_dir, os.path.basename(src))
         shutil.copy2(src, dst)
         copied.append(dst)
     return copied

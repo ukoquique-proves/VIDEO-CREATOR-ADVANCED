@@ -58,4 +58,4 @@ transitions:
 
 ## Lingo_PERSONAS
 lingo:
-  root: "/root/a_VIDEO_GENERATION/VIDEO_PERSONAS/Lingo_PERSONAS"
+  root: "./vendor/Lingo_PERSONAS"

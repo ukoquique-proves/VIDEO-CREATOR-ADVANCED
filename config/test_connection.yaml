@@ -1,0 +1,12 @@
+title: "Test Connection Video"
+speech_content: "This is a quick test to confirm that the video creation pipeline is working correctly. We are checking TTS, images, and subtitles."
+language: "en"
+orientation: "horizontal"
+subtitles_enabled: true
+visual_assets:
+  asset_type: "text_prompts"
+  prompts:
+    - "A beautiful sunset over a calm ocean"
+    - "A close up of a vintage camera"
+output_format: "mp4"
+image_engine: "picsum"
