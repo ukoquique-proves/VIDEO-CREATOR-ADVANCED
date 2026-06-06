@@ -16,3 +16,6 @@ __pycache__/
 .vscode/
 .idea/
 *.swp
+
+# Temporary uploads
+temp_uploads/
