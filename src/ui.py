@@ -39,7 +39,7 @@ def _run_pipeline(config: VideoConfiguration, result_queue: queue.Queue, log_que
     root_logger = logging.getLogger()
     root_logger.addHandler(handler)
     try:
-        orchestrator = VideoOrchestrator(output_dir="output")
+        orchestrator = VideoOrchestrator(output_dir=str(project_root / "output"))
         result = orchestrator.create_video(config)
         result_queue.put(("ok", result))
     except Exception as exc:
@@ -144,10 +144,44 @@ def main() -> None:
         raw = st.text_area("AI Prompts (one per line):", height=130,
                            placeholder="A futuristic city skyline at night\nA close-up of a neon sign")
         prompts = [p.strip() for p in raw.splitlines() if p.strip()]
+        
+        # Detection of accidental paths in prompt area
+        if any(p.startswith("/") or p.lower().endswith((".png", ".jpg", ".jpeg", ".webp")) for p in prompts):
+            st.warning("⚠️ Some prompts look like file paths. If you want to use local images, switch the 'Visual Source' above to 'User Provided'.")
     else:
-        raw = st.text_area("Local Image Paths (one per line):", height=130,
-                           placeholder="/path/to/image1.jpg\n/path/to/image2.png")
-        images = [p.strip() for p in raw.splitlines() if p.strip()]
+        # Support both file uploads and manual paths
+        uploaded_files = st.file_uploader(
+            "Upload Images", 
+            type=["png", "jpg", "jpeg", "webp"], 
+            accept_multiple_files=True,
+            help="Select images from your computer to use in the video."
+        )
+        
+        raw = st.text_area(
+            "OR Enter Local Image Paths (one per line):", 
+            height=100,
+            placeholder="/path/to/image1.jpg\n/path/to/image2.png"
+        )
+        
+        # Combine uploads and manual paths
+        images = []
+        if uploaded_files:
+            upload_dir = Path("temp_uploads")
+            upload_dir.mkdir(exist_ok=True)
+            for uploaded_file in uploaded_files:
+                target_path = upload_dir / uploaded_file.name
+                with open(target_path, "wb") as f:
+                    f.write(uploaded_file.getbuffer())
+                images.append(str(target_path.absolute()))
+            st.info(f"Using {len(uploaded_files)} uploaded images.")
+            
+        manual_paths = [p.strip() for p in raw.splitlines() if p.strip()]
+        if manual_paths:
+            images.extend(manual_paths)
+            if uploaded_files:
+                st.info(f"Added {len(manual_paths)} manual paths.")
+            else:
+                st.info(f"Using {len(manual_paths)} manual image paths.")
 
     st.divider()
 

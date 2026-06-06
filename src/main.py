@@ -38,9 +38,9 @@ def main() -> None:
     )
     parser.add_argument(
         "-o", "--output-dir",
-        default="output",
+        default=str(Path(__file__).resolve().parent.parent / "output"),
         metavar="DIR",
-        help="Directory to save the generated video and workspace files (default: output).",
+        help="Directory to save the generated video and workspace files.",
     )
     args = parser.parse_args()
 

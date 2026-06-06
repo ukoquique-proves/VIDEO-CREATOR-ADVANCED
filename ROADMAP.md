@@ -30,6 +30,8 @@
 ## Phase 4: Advanced Video Features
 - [x] Own subtitle burn-in with correct descender rendering, independent of Lingo — `_burn_subtitles` + `_render_subtitle_frame` use `font.getmetrics()` (ascent + descent) instead of `textbbox`; Lingo always receives `add_captions=False` to prevent double rendering and bypass its clipping bug
 - [x] Dynamic orientation support (Vertical 9:16 and Horizontal 16:9) and dimension resolution
+- [ ] **Scene-based Precision Mode**: Implement `VideoScene` model for granular speech-to-visual synchronization (per-scene TTS and timing). Reference: `TANDA_3/VideoCreation-06-FALLIDO-MODO_ESCENAS`
+
 - [ ] Whisper-based forced subtitle alignment (replace word-rate estimation)
 - [ ] Ken Burns effect on images (pan + zoom animations)
 - [ ] Smooth crossfade transitions between scenes
@@ -54,3 +56,12 @@
 - [ ] Docker containerization
 - [ ] CI/CD pipeline with automated testing
 - [ ] Performance benchmarking (target: < 60s for a 1-minute video)
+
+## Phase 7: Improvements
+### 1. External Integrations & Resources
+- [ ] **Pollinations Integration**: Fully implement and test the `pollinations` engine in `src/image_adapter.py` (including timeout and retry logic).
+- [ ] **Case-Study Templates**: Adapt high-quality configuration examples (like `trixie_es.yaml` from the reference project) to the `config/` directory.
+
+### 2. Feature Expansion (Visual Assets)
+- [ ] **Mixed Asset Support**: Update `src/schema.py` and `src/orchestrator.py` to support a mix of images and video clips as visual assets.
+- [ ] **Video Clip Integration**: Update `src/assembler_adapter.py` to handle video files in the `visual_files` list (resize/crop and audio management).

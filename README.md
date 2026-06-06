@@ -81,6 +81,20 @@ python -m src.main --config config/example_english.yaml
 python -m src --config config/example_english.yaml
 ```
 
+### UI Usage
+
+For an interactive experience, you can use the Streamlit-based UI:
+
+```bash
+python -m streamlit run src/ui.py
+```
+
+The UI supports:
+- **Interactive Configuration**: Set titles, speech content, and orientation.
+- **Visual Asset Management**: Upload local images directly or provide AI prompts.
+- **Real-time Logs**: Monitor the generation progress directly in the browser.
+- **Video Preview**: Watch the generated video immediately after assembly.
+
 ### Programmatic API
 
 ```python

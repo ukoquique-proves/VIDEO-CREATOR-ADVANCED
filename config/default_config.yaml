@@ -46,10 +46,10 @@ subtitles:
   stroke_color: "black"
   stroke_width: 2
   position: "bottom"
-  margin: 300
+  margin: 50
   words_per_second: 2.5
-  max_words_per_chunk: 10
-  max_chars_per_line: 32   # wrap text before this many characters per line
+  max_words_per_chunk: 8
+  max_chars_per_line: 42   # wrap text before this many characters per line
 
 ## Transitions
 transitions:
@@ -58,4 +58,4 @@ transitions:
 
 ## Lingo_PERSONAS
 lingo:
-  root: "/root/a_VIDEO_GENERATION/VIDEO_PERSONAS/Lingo_PERSONAS"
+  root: "./vendor/Lingo_PERSONAS"

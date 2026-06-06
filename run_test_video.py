@@ -25,6 +25,8 @@ if __name__ == "__main__":
         length_seconds=10.0,
     )
 
-    orchestrator = VideoOrchestrator(output_dir="output")
+    from pathlib import Path
+    project_root = Path(__file__).resolve().parent
+    orchestrator = VideoOrchestrator(output_dir=str(project_root / "output"))
     result = orchestrator.create_video(config)
     print(f"\nDone: {result['output_path']}")

@@ -3,6 +3,25 @@
 ## [Unreleased]
 
 ### Added
+- **UI Improvements**: Added a direct file uploader to `src/ui.py`, allowing users to drag and drop local images instead of manually typing paths.
+- **Path Detection Warning**: Added automatic detection in the AI Prompt text area of the UI to warn users if they accidentally enter file paths while in AI generation mode.
+- **Scene-based Roadmap Entry**: Added "Scene-based Precision Mode" to `ROADMAP.md` (Phase 4), with a reference to the `TANDA_3/VideoCreation-06-FALLIDO-MODO_ESCENAS` folder for future implementation.
+
+### Fixed
+- **Subtitle Positioning**: Updated `src/subtitle_renderer.py` and `config/default_config.yaml` to support a configurable `position` ("bottom" or "middle") and adjusted the default `margin` from 300 to 50 pixels for better vertical alignment.
+- **Subtitle Line Optimization**: Adjusted `max_words_per_chunk` (10 -> 8) and `max_chars_per_line` (32 -> 42) to ensure subtitles typically fit in 1 or 2 lines instead of 3.
+- **Audio Guard in Subtitles**: Added a check in `src/subtitle_renderer.py` to handle videos without audio tracks, preventing crashes during the subtitle burn-in process.
+- **Resource Scope Fix**: Moved `output_path` definition in `src/assembler_adapter.py` outside of the `try` block to prevent `UnboundLocalError` when assembly fails.
+- **Lingo Path Priority**: Updated `src/lingo_utils.py` to give `LINGO_ROOT` and config settings priority over the `vendor/` directory, ensuring the correct version of Lingo_PERSONAS is always used.
+- **Relative Path Stability**: Forced `output_dir` to be an absolute path in `src/ui.py`, `src/orchestrator.py`, and `src/main.py`. Also updated `run_test_video.py` and `orchestrator.py` docstrings for consistency.
+- **Asyncio Loop Conflict**: Implemented a `ThreadPoolExecutor` wrapper in `src/tts_adapter.py` using a lambda to ensure the coroutine is created and run within the worker thread, fixing `RuntimeError: This event loop is already running`.
+- **Picsum Partial Results**: Updated `src/image_adapter.py` to keep successful downloads if a batch is incomplete, instead of discarding everything and falling back to AI generation.
+- **Subtitle Sync Improvement**: `src/orchestrator.py` now measures the actual generated audio duration to scale subtitle segments when `length_seconds` is not provided, ensuring better synchronization.
+- **Progress Tracking**: Corrected step log numbering in `src/orchestrator.py` (now 1/4 to 4/4) and made optional steps like image modification clearer.
+
+## [0.1.0] - 2026-06-06
+
+### Added
 - `src/schema.py` — added `PICSUM`, `UNSPLASH`, and `PEXELS` to `ImageEngine` enum to prepare for UI provider dropdowns
 - `src/image_adapter.py` — added `_picsum_batch()` fallback function that fetches deterministic stock images from picsum.photos using prompt-keyword-derived seeds
 - `config/demo_picsum.yaml` — new example configuration file demonstrating the Picsum fallback

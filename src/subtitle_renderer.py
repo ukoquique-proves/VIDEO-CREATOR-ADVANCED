@@ -60,8 +60,8 @@ def burn_subtitles(
     font_color   = scfg.get("font_color", "white")
     stroke_color = scfg.get("stroke_color", "black")
     stroke_width = min(int(scfg.get("stroke_width", 2)), 8)  # clamp: O(n²) render cost
-    margin       = int(scfg.get("margin", 300))
-    max_chars    = int(scfg.get("max_chars_per_line", 32))
+    margin       = int(scfg.get("margin", 50))
+    max_chars    = int(scfg.get("max_chars_per_line", 42))
 
     try:
         font = ImageFont.truetype(font_path, font_size)
@@ -118,7 +118,14 @@ def burn_subtitles(
 
             return base.clip(0, 255).astype(np.uint8)
 
-        composite = VideoClip(make_frame, duration=video.duration).with_audio(video.audio)
+        composite = VideoClip(make_frame, duration=video.duration)
+        if video.audio is not None:
+            composite = composite.with_audio(video.audio)
+        else:
+            logger.warning(
+                "burn_subtitles: source video has no audio track — "
+                "subtitled output will be silent."
+            )
         try:
             output_path = os.path.join(output_dir, f"subtitled_{output_filename}")
             composite.write_videofile(
@@ -170,7 +177,14 @@ def render_subtitle_frame(
     box_h = total_text_height + pad_y * 2
 
     box_x = (width - box_w) // 2
-    box_y = height - margin - box_h
+    # box_y calculation changed to support "middle" position
+    scfg = config_loader.subtitles()
+    position = scfg.get("position", "bottom")
+
+    if position == "middle":
+        box_y = (height - box_h) // 2
+    else:  # default to bottom
+        box_y = height - margin - box_h
 
     frame = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw  = ImageDraw.Draw(frame)

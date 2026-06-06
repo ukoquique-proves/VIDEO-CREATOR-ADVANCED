@@ -14,7 +14,8 @@ Usage::
             prompts=["A sunny beach"],
         ),
     )
-    orchestrator = VideoOrchestrator()
+    # Recommended: Use an absolute path for output_dir to ensure stability
+    orchestrator = VideoOrchestrator(output_dir="output")
     result = orchestrator.create_video(config)
     print(result["output_path"])
 """
@@ -52,6 +53,14 @@ class VideoOrchestrator:
     """
 
     def __init__(self, output_dir: str = "output"):
+        """
+        Parameters
+        ----------
+        output_dir:
+            Base directory for all output files. Relative paths are resolved
+            against the current working directory at instantiation time — use
+            an absolute path when calling from threads or subprocesses.
+        """
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -76,7 +85,7 @@ class VideoOrchestrator:
 
         # 2. Generate audio from speech text
         audio_path = str(workspace / "speech.mp3")
-        logger.info("[Step 1/5] Generating TTS audio …")
+        logger.info("[Step 1/4] Generating TTS audio …")
         tts_adapter.generate_speech(
             text=config.speech_content,
             output_path=audio_path,
@@ -98,7 +107,7 @@ class VideoOrchestrator:
             aspect_ratio = "9:16"
 
         # 3. Prepare visual assets
-        logger.info("[Step 2/5] Preparing visual assets …")
+        logger.info("[Step 2/4] Preparing visual assets …")
         visual_files = self._prepare_visuals(config, str(workspace), aspect_ratio, final_width, final_height)
 
         if not visual_files:
@@ -108,26 +117,37 @@ class VideoOrchestrator:
 
         # 4. (Optional) Modify images with AI
         if config.image_modification_instructions:
-            logger.info("[Step 3/5] Applying image modifications …")
+            logger.info("Applying image modifications …")
             visual_files = image_adapter.modify_images(
                 visual_files, config.image_modification_instructions,
             )
-        else:
-            logger.info("[Step 3/5] No image modifications requested — skipping.")
 
         # 5. Generate subtitle segments
         segments: List[Dict] = []
         if config.subtitles_enabled:
-            logger.info("[Step 4/5] Generating subtitle segments …")
+            logger.info("[Step 3/4] Generating subtitle segments …")
+            
+            # Determine total duration for subtitle scaling
+            total_duration = config.length_seconds
+            if total_duration is None:
+                try:
+                    from moviepy import AudioFileClip
+                    audio = AudioFileClip(audio_path)
+                    total_duration = audio.duration
+                    audio.close()
+                    logger.info("Measured audio duration: %.2fs", total_duration)
+                except Exception as exc:
+                    logger.warning("Could not measure audio duration (%s) — falling back to estimation.", exc)
+
             segments = subtitle_adapter.generate_subtitle_segments(
                 text=config.speech_content,
-                total_duration=config.length_seconds,
+                total_duration=total_duration,
             )
         else:
-            logger.info("[Step 4/5] Subtitles disabled — skipping.")
+            logger.info("[Step 3/4] Subtitles disabled — skipping.")
 
         # 6. Assemble final video
-        logger.info("[Step 5/5] Assembling final video …")
+        logger.info("[Step 4/4] Assembling final video …")
         output_path = assembler_adapter.assemble_video(
             audio_path=audio_path,
             visual_files=visual_files,
@@ -143,6 +163,9 @@ class VideoOrchestrator:
 
         logger.info("=== Video complete: %s ===", output_path)
 
+        # 7. Cleanup workspace temporary files
+        self._cleanup_workspace(workspace)
+
         return {
             "output_path": output_path,
             "workspace": str(workspace),
@@ -154,6 +177,28 @@ class VideoOrchestrator:
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
+
+    def _cleanup_workspace(self, workspace: Path) -> None:
+        """Remove temporary files and directories from the workspace.
+        
+        Keeps only the 'final' directory (if exists) or the final output file,
+        and the audio/visual assets that might be useful for reference.
+        Deletes 'temp' and other transient folders.
+        """
+        import shutil
+        temp_dir = workspace / "temp"
+        if temp_dir.exists():
+            logger.info("Cleaning up temporary directory: %s", temp_dir)
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        
+        # Add any other transient files to cleanup here if needed
+        # For example, moviepy often leaves .mp3TEMP_MPY_wvf_snd.mp4 files
+        for transient in workspace.glob("*TEMP_MPY*"):
+            try:
+                transient.unlink()
+                logger.info("Removed transient file: %s", transient)
+            except Exception as e:
+                logger.warning("Could not remove transient file %s: %s", transient, e)
 
     def _prepare_visuals(
         self, config: VideoConfiguration, workspace: str, aspect_ratio: str, width: int, height: int
