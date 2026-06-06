@@ -25,11 +25,15 @@ def get_lingo_root() -> Path:
     """Resolve the Lingo_PERSONAS root directory.
 
     Checks, in order:
-    1. ``LINGO_ROOT`` environment variable
-    2. ``lingo.root`` in ``config/default_config.yaml``
-    3. Local ``vendor/Lingo_PERSONAS`` directory (last resort — may be outdated)
+    1. Local ``vendor/Lingo_PERSONAS`` directory (highest priority for decoupling)
+    2. ``LINGO_ROOT`` environment variable
+    3. ``lingo.root`` in ``config/default_config.yaml``
     """
-    # 1. Environment variable (highest priority — explicit operator override)
+    # 1. Local vendor directory
+    if _VENDOR_DEFAULT.exists() and _VENDOR_DEFAULT.is_dir():
+        return _VENDOR_DEFAULT
+
+    # 2. Environment variable
     env_val = os.environ.get("LINGO_ROOT")
     if env_val:
         p = Path(env_val)
@@ -37,7 +41,7 @@ def get_lingo_root() -> Path:
             return p
         logger.warning("LINGO_ROOT env var points to non-existent path: %s", env_val)
 
-    # 2. Config file
+    # 3. Config file
     try:
         from src import config_loader
         cfg_val = config_loader.lingo().get("root")
@@ -49,16 +53,7 @@ def get_lingo_root() -> Path:
     except Exception:
         pass  # config unavailable
 
-    # 3. Local vendor directory (last resort)
-    if _VENDOR_DEFAULT.exists() and _VENDOR_DEFAULT.is_dir():
-        logger.info("Using vendored Lingo_PERSONAS at %s", _VENDOR_DEFAULT)
-        return _VENDOR_DEFAULT
-
-    # Nothing found — return vendor path as placeholder (will fail on import, which is correct)
-    logger.warning(
-        "Lingo_PERSONAS not found via LINGO_ROOT, config, or vendor/. "
-        "Set LINGO_ROOT or lingo.root in default_config.yaml."
-    )
+    # Fallback to vendor path even if it doesn't exist yet (to maintain consistent return type)
     return _VENDOR_DEFAULT
 
 
