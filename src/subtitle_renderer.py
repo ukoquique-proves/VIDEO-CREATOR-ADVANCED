@@ -61,6 +61,7 @@ def burn_subtitles(
     stroke_color = scfg.get("stroke_color", "black")
     stroke_width = min(int(scfg.get("stroke_width", 2)), 8)  # clamp: O(n²) render cost
     margin       = int(scfg.get("margin", 50))
+    position     = scfg.get("position", "bottom")
     max_chars    = int(scfg.get("max_chars_per_line", 42))
 
     try:
@@ -92,6 +93,7 @@ def burn_subtitles(
                 stroke_width=stroke_width,
                 margin=margin,
                 max_chars=max_chars,
+                position=position,
             )
             rgba = np.array(frame, dtype=np.float32)  # H x W x 4, values 0-255
             rendered.append({"start": start, "end": end, "rgba": rgba})
@@ -155,6 +157,7 @@ def render_subtitle_frame(
     stroke_width: int,
     margin: int,
     max_chars: int,
+    position: str = "bottom",
 ) -> Image.Image:
     """Render one subtitle frame as a transparent RGBA image.
 
@@ -178,8 +181,6 @@ def render_subtitle_frame(
 
     box_x = (width - box_w) // 2
     # box_y calculation changed to support "middle" position
-    scfg = config_loader.subtitles()
-    position = scfg.get("position", "bottom")
 
     if position == "middle":
         box_y = (height - box_h) // 2

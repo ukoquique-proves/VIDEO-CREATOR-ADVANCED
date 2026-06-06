@@ -11,8 +11,6 @@ import logging
 import subprocess
 from pathlib import Path
 from typing import Optional
-
-from src.lingo_utils import ensure_lingo_on_path
 from src import config_loader
 from src.schema import Language
 
@@ -99,13 +97,37 @@ def generate_speech(
     else:
         resolved_voice = cfg.get("voice", "en-US-GuyNeural")
 
+    use_cache = cfg.get("use_cache", True)
+    if use_cache:
+        import hashlib, shutil
+        cache_dir = Path(".cache/tts")
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        hash_str = f"{text}|{method}|{resolved_voice}".encode("utf-8")
+        file_hash = hashlib.md5(hash_str).hexdigest()
+        ext = Path(output_path).suffix or ".mp3"
+        cache_file = cache_dir / f"{file_hash}{ext}"
+        
+        if cache_file.exists():
+            logger.info("TTS cache hit for '%s...' voice='%s'.", text[:20], resolved_voice)
+            shutil.copy2(cache_file, output_path)
+            return output_path
+
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
+    res = None
     if method == "edge_tts":
-        return _edge_tts(text, output_path, resolved_voice)
+        res = _edge_tts(text, output_path, resolved_voice)
+    elif method == "openai":
+        res = _openai_tts(text, output_path, resolved_voice)
+    else:
+        logger.warning("TTS method '%s' not supported — generating silent placeholder.", method)
+        res = _generate_silent_audio(output_path)
 
-    logger.warning("TTS method '%s' not supported — generating silent placeholder.", method)
-    return _generate_silent_audio(output_path)
+    if use_cache and res and Path(res).exists():
+        import shutil
+        shutil.copy2(res, cache_file)
+
+    return res
 
 
 # ---------------------------------------------------------------------------
@@ -166,3 +188,31 @@ def _generate_silent_audio(output_path: str, duration_s: float = 3.0) -> str:
     else:
         logger.info("Silent audio placeholder saved → %s", output_path)
     return output_path
+
+# ---------------------------------------------------------------------------
+# openai backend
+# ---------------------------------------------------------------------------
+
+def _openai_tts(text: str, output_path: str, voice: str) -> str:
+    """Generate speech with OpenAI TTS API."""
+    try:
+        from openai import OpenAI
+        client = OpenAI()
+        
+        valid_voices = {"alloy", "echo", "fable", "onyx", "nova", "shimmer"}
+        oai_voice = voice if voice in valid_voices else "alloy"
+        
+        logger.info("Generating OpenAI TTS with voice='%s'", oai_voice)
+        response = client.audio.speech.create(
+            model="tts-1",
+            voice=oai_voice,
+            input=text
+        )
+        response.stream_to_file(output_path)
+        return output_path
+    except ImportError:
+        logger.error("openai package not installed. Run 'pip install openai'. Falling back to silent audio.")
+        return _generate_silent_audio(output_path)
+    except Exception as exc:
+        logger.error("OpenAI TTS failed: %s — falling back to silent audio.", exc)
+        return _generate_silent_audio(output_path)

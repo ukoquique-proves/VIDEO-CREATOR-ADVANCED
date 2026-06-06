@@ -23,6 +23,44 @@ class TestTTSAdapter:
         assert result == out
         assert os.path.isfile(out)
 
+    def test_openai_tts_called(self, tmp_path):
+        """Passing method='openai' should call _openai_tts."""
+        out = str(tmp_path / "openai.mp3")
+        with patch.object(tts_adapter, "_openai_tts", return_value=out) as mock_openai:
+            tts_adapter.generate_speech("Hello", out, method="openai")
+        mock_openai.assert_called_once()
+
+    def test_generate_speech_caching(self, tmp_path):
+        """TTS should use cache on subsequent identical requests."""
+        out1 = str(tmp_path / "out1.mp3")
+        out2 = str(tmp_path / "out2.mp3")
+        
+        with patch.object(tts_adapter, "_edge_tts", return_value=out1) as mock_edge, \
+             patch("src.tts_adapter.config_loader.tts", return_value={"use_cache": True, "method": "edge_tts"}):
+            
+            import uuid
+            unique_text = f"Cache Test {uuid.uuid4()}"
+            # First call creates the cache
+            tts_adapter.generate_speech(unique_text, out1, voice="en-US-GuyNeural")
+            mock_edge.assert_called_once()
+            
+            # Reset mock
+            mock_edge.reset_mock()
+            
+            # Create a fake output from the first call so shutil.copy2 doesn't fail
+            if not os.path.exists(out1):
+                open(out1, "w").close()
+            
+            # Re-run first call properly so cache actually saves (the mock returned out1, we need out1 to exist)
+            tts_adapter.generate_speech(unique_text, out1, voice="en-US-GuyNeural")
+            
+            mock_edge.reset_mock()
+            
+            # Second call should hit the cache and NOT call edge_tts
+            tts_adapter.generate_speech(unique_text, out2, voice="en-US-GuyNeural")
+            mock_edge.assert_not_called()
+            assert os.path.isfile(out2)
+
     def test_unknown_method_uses_fallback(self, tmp_path):
         """An unknown TTS method should still produce a file (silent fallback)."""
         out = str(tmp_path / "unknown.mp3")

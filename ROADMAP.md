@@ -16,8 +16,8 @@
 ## Phase 2: Real TTS Integration
 - [x] Add TTS voice selection via config (`tts.voice` in `default_config.yaml`)
 - [x] Support multi-language TTS — `Language` enum (`en`, `es`, `zh`, `fr`, `de`, `pt`); voice resolved via config `language_voices` map → hardcoded map → config default
-- [ ] Wire up full Lingo_PERSONAS TTS dispatcher (edge_tts, azure, openai, fish_tts)
-- [ ] Add TTS audio caching to avoid re-generation
+- [x] Expand TTS dispatcher natively (edge_tts, openai) — decoupled from Lingo_PERSONAS
+- [x] Add TTS audio caching to avoid re-generation
 - [ ] Test with long-form speech content (> 5 minutes)
 
 ## Phase 3: AI Image Generation

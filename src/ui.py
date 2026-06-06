@@ -166,8 +166,11 @@ def main() -> None:
         # Combine uploads and manual paths
         images = []
         if uploaded_files:
-            upload_dir = Path("temp_uploads")
-            upload_dir.mkdir(exist_ok=True)
+            import shutil
+            upload_dir = project_root / "temp_uploads"
+            if upload_dir.exists():
+                shutil.rmtree(upload_dir)
+            upload_dir.mkdir(parents=True, exist_ok=True)
             for uploaded_file in uploaded_files:
                 target_path = upload_dir / uploaded_file.name
                 with open(target_path, "wb") as f:

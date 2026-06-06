@@ -3,9 +3,14 @@
 ## [Unreleased]
 
 ### Added
+- **OpenAI TTS Support**: Added a native OpenAI TTS dispatcher in `src/tts_adapter.py`. Config can now specify `method: "openai"` to use official OpenAI voices (requires `openai` package and `OPENAI_API_KEY`).
+- **TTS Audio Caching**: Implemented MD5-based caching for generated audio in `src/tts_adapter.py`. Consecutive identical text-to-speech requests now hit `.cache/tts/`, vastly speeding up video generation with unchanged scripts.
 - **UI Improvements**: Added a direct file uploader to `src/ui.py`, allowing users to drag and drop local images instead of manually typing paths.
 - **Path Detection Warning**: Added automatic detection in the AI Prompt text area of the UI to warn users if they accidentally enter file paths while in AI generation mode.
 - **Scene-based Roadmap Entry**: Added "Scene-based Precision Mode" to `ROADMAP.md` (Phase 4), with a reference to the `TANDA_3/VideoCreation-06-FALLIDO-MODO_ESCENAS` folder for future implementation.
+
+### Changed
+- **TTS Decoupling**: Completely removed `ensure_lingo_on_path` from `src/tts_adapter.py`. The text-to-speech module is now fully decoupled from `Lingo_PERSONAS` and runs natively.
 
 ### Fixed
 - **Subtitle Positioning**: Updated `src/subtitle_renderer.py` and `config/default_config.yaml` to support a configurable `position` ("bottom" or "middle") and adjusted the default `margin` from 300 to 50 pixels for better vertical alignment.

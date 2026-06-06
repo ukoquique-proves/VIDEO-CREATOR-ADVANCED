@@ -3,7 +3,8 @@
 
 ## TTS Settings
 tts:
-  method: "edge_tts"        # Free, no API key required
+  method: "edge_tts"        # Options: edge_tts (free), openai (requires OPENAI_API_KEY)
+  use_cache: true           # Cache generated audio in .cache/tts to speed up regeneration
   voice: "en-US-GuyNeural"  # Default voice (used when no language is specified)
   # Per-language default voices (edge_tts voice names)
   # Override any entry here to change the default for that language.
