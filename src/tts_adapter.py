@@ -7,7 +7,10 @@ Supports:
 """
 
 import asyncio
+import concurrent.futures
+import hashlib
 import logging
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -105,7 +108,6 @@ def generate_speech(
 
     use_cache = cfg.get("use_cache", True)
     if use_cache:
-        import hashlib, shutil
         cache_dir = Path(".cache/tts")
         cache_dir.mkdir(parents=True, exist_ok=True)
         
@@ -132,7 +134,6 @@ def generate_speech(
         res = _generate_silent_audio(output_path)
 
     if use_cache and res and Path(res).exists():
-        import shutil
         shutil.copy2(res, cache_file)
 
     return res
@@ -159,7 +160,6 @@ def _edge_tts(text: str, output_path: str, voice: str, rate: str = "+0%") -> str
         if loop is not None and loop.is_running():
             # Already inside an event loop (e.g. Streamlit).
             # Run the coroutine in a separate thread with its own loop.
-            import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 # Use a lambda to ensure the coroutine is created inside the worker thread
                 future = pool.submit(lambda: asyncio.run(_run()))
@@ -192,9 +192,11 @@ def _generate_silent_audio(output_path: str, duration_s: float = 3.0) -> str:
         capture_output=True,
     )
     if result.returncode != 0:
-        logger.error("ffmpeg silent audio failed: %s", result.stderr.decode())
-    else:
-        logger.info("Silent audio placeholder saved → %s", output_path)
+        raise RuntimeError(
+            f"ffmpeg failed to generate silent audio (exit {result.returncode}): "
+            f"{result.stderr.decode()}"
+        )
+    logger.info("Silent audio placeholder saved → %s", output_path)
     return output_path
 
 # ---------------------------------------------------------------------------

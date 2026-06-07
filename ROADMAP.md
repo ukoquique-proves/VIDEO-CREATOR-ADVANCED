@@ -32,7 +32,6 @@
 - [x] Own subtitle burn-in with correct descender rendering, independent of Lingo — `_burn_subtitles` + `_render_subtitle_frame` use `font.getmetrics()` (ascent + descent) instead of `textbbox`; Lingo always receives `add_captions=False` to prevent double rendering and bypass its clipping bug
 - [x] Dynamic orientation support (Vertical 9:16 and Horizontal 16:9) and dimension resolution
 - [ ] **Scene-based Precision Mode**: Implement `VideoScene` model for granular speech-to-visual synchronization (per-scene TTS and timing). Reference: `TANDA_3/VideoCreation-06-FALLIDO-MODO_ESCENAS`
-
 - [ ] Whisper-based forced subtitle alignment (replace word-rate estimation)
 - [ ] Ken Burns effect on images (pan + zoom animations)
 - [ ] Smooth crossfade transitions between scenes
@@ -67,3 +66,10 @@
 ### 2. Feature Expansion (Visual Assets)
 - [ ] **Mixed Asset Support**: Update `src/schema.py` and `src/orchestrator.py` to support a mix of images and video clips as visual assets.
 - [ ] **Video Clip Integration**: Update `src/assembler_adapter.py` to handle video files in the `visual_files` list (resize/crop and audio management).
+##
+ Architectural Notes
+
+### config_loader singleton
+`config_loader` uses a module-level cache (`_cache: Dict`) shared across all modules in the process. This is fine for the current single-video-per-process model (CLI, UI). It becomes a problem if batch processing or a library API ever needs two concurrent `VideoOrchestrator` instances with different configs — the cache could serve stale values.
+
+The correct long-term fix is to pass a config object into `VideoOrchestrator` at construction time and thread it through to each adapter call, removing the global read. This is a wide refactor (orchestrator + all adapters + backends + UI) and is not worth doing until parallel/batch execution is actually needed.

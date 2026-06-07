@@ -33,7 +33,7 @@ class LingoAssemblerBackend:
 
         Captions are always disabled (``add_captions=False``) because Lingo's
         renderer clips descenders.  Subtitle burn-in is handled separately by
-        ``subtitle_renderer``.
+        the orchestrator via its ``SubtitleBackend``.
 
         Returns the output path on success, or ``None`` if Lingo is unavailable.
         """

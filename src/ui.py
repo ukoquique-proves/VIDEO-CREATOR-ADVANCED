@@ -16,25 +16,6 @@ sys.path.insert(0, str(project_root))
 
 import streamlit as st
 
-if "session_id" not in st.session_state:
-    import uuid
-    st.session_state.session_id = str(uuid.uuid4())
-
-def _cleanup_old_sessions():
-    """Remove temp_uploads folders from previous sessions."""
-    upload_root = project_root / "temp_uploads"
-    if not upload_root.exists():
-        return
-    import shutil, time
-    now = time.time()
-    for session_dir in upload_root.iterdir():
-        if session_dir.is_dir() and session_dir.name != st.session_state.session_id:
-            # If directory is older than 2 hours, clean it up
-            if now - session_dir.stat().st_mtime > 7200:
-                shutil.rmtree(session_dir, ignore_errors=True)
-
-_cleanup_old_sessions()
-
 from src.schema import VideoConfiguration, VisualAssetConfig, VisualAssetType, Orientation, Language
 from src.orchestrator import VideoOrchestrator
 
@@ -158,56 +139,38 @@ def main() -> None:
 
     prompts: list = []
     images: list = []
+    uploaded_images: dict = {}
 
     if asset_type_str == VisualAssetType.TEXT_PROMPTS.value:
         raw = st.text_area("AI Prompts (one per line):", height=130,
                            placeholder="A futuristic city skyline at night\nA close-up of a neon sign")
         prompts = [p.strip() for p in raw.splitlines() if p.strip()]
-        
-        # Detection of accidental paths in prompt area
+
         if any(p.startswith("/") or p.lower().endswith((".png", ".jpg", ".jpeg", ".webp")) for p in prompts):
             st.warning("⚠️ Some prompts look like file paths. If you want to use local images, switch the 'Visual Source' above to 'User Provided'.")
     else:
-        # Support both file uploads and manual paths
         uploaded_files = st.file_uploader(
-            "Upload Images", 
-            type=["png", "jpg", "jpeg", "webp"], 
+            "Drop or select images",
+            type=["png", "jpg", "jpeg", "webp"],
             accept_multiple_files=True,
-            help="Select images from your computer to use in the video."
+            help="Drag and drop image files here, or click to browse.",
         )
-        
+
         raw = st.text_area(
-            "OR Enter Local Image Paths (one per line):", 
-            height=100,
-            placeholder="/path/to/image1.jpg\n/path/to/image2.png"
+            "OR enter local image paths (one per line):",
+            height=80,
+            placeholder="/path/to/image1.jpg\n/path/to/image2.png",
         )
-        
-        # Combine uploads and manual paths
-        images = []
+
         if uploaded_files:
-            import shutil
-            # Use session-specific directory to avoid deletion on UI interaction
-            upload_dir = project_root / "temp_uploads" / st.session_state.session_id
-            upload_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Note: We don't wipe this dir on every interaction anymore, 
-            # only when files are actually present in the uploader.
-            for uploaded_file in uploaded_files:
-                target_path = upload_dir / uploaded_file.name
-                # Only write if it doesn't exist to save IO
-                if not target_path.exists():
-                    with open(target_path, "wb") as f:
-                        f.write(uploaded_file.getbuffer())
-                images.append(str(target_path.absolute()))
-            st.info(f"Using {len(uploaded_files)} uploaded images.")
-            
+            # Keep bytes in memory — the orchestrator saves them to disk at pipeline time.
+            uploaded_images = {f.name: f.getvalue() for f in uploaded_files}
+            st.info(f"{len(uploaded_files)} image(s) ready to use.")
+
         manual_paths = [p.strip() for p in raw.splitlines() if p.strip()]
         if manual_paths:
             images.extend(manual_paths)
-            if uploaded_files:
-                st.info(f"Added {len(manual_paths)} manual paths.")
-            else:
-                st.info(f"Using {len(manual_paths)} manual image paths.")
+            st.info(f"{len(manual_paths)} path(s) added.")
 
     st.divider()
 
@@ -220,8 +183,8 @@ def main() -> None:
             errors.append("Please provide speech content.")
         if asset_type_str == VisualAssetType.TEXT_PROMPTS.value and not prompts:
             errors.append("Please provide at least one AI prompt.")
-        if asset_type_str == VisualAssetType.IMAGE_SEQUENCE.value and not images:
-            errors.append("Please provide at least one local image path.")
+        if asset_type_str == VisualAssetType.IMAGE_SEQUENCE.value and not images and not uploaded_images:
+            errors.append("Please provide at least one image (upload or path).")
         for err in errors:
             st.error(err)
         if errors:
@@ -234,6 +197,7 @@ def main() -> None:
                 asset_type=VisualAssetType(asset_type_str),
                 prompts=prompts or None,
                 images=images or None,
+                uploaded_images=uploaded_images or None,
             ),
             subtitles_enabled=subtitles_enabled,
             orientation=Orientation(orientation_str),

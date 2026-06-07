@@ -22,27 +22,22 @@ Usage::
 
 import logging
 import os
-import re
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List
 
 from src.schema import VideoConfiguration, VisualAssetType, Orientation
 from src import tts_adapter, image_adapter, subtitle_adapter, assembler_adapter, config_loader
+from src.backends import SubtitleBackend
+from src.backends.ffmpeg_subtitle_backend import FFmpegSubtitleBackend
+from src.utils import sanitize_filename
 
 logger = logging.getLogger(__name__)
 
 
 def _sanitize_title(title: str) -> str:
-    """Return a filesystem-safe version of *title*.
-
-    Replaces spaces with underscores and strips characters that are
-    illegal on Linux, macOS, or Windows (/ : * ? " < > | and null bytes).
-    """
-    sanitized = re.sub(r'[/\\:*?"<>|\x00]', "_", title)
-    sanitized = sanitized.replace(" ", "_")
-    # Collapse multiple consecutive underscores and strip leading/trailing ones
-    sanitized = re.sub(r'_+', "_", sanitized).strip("_")
-    return sanitized or "untitled"
+    """Alias for :func:`src.utils.sanitize_filename` — kept for internal use."""
+    return sanitize_filename(title)
 
 
 class VideoOrchestrator:
@@ -52,7 +47,7 @@ class VideoOrchestrator:
     backends can be swapped independently.
     """
 
-    def __init__(self, output_dir: str = "output"):
+    def __init__(self, output_dir: str = "output", subtitle_backend: SubtitleBackend = None):
         """
         Parameters
         ----------
@@ -60,9 +55,16 @@ class VideoOrchestrator:
             Base directory for all output files. Relative paths are resolved
             against the current working directory at instantiation time — use
             an absolute path when calling from threads or subprocesses.
+        subtitle_backend:
+            Backend used for subtitle burn-in. Defaults to
+            ``FFmpegSubtitleBackend``. Pass an alternative to swap renderers
+            or inject a mock in tests.
         """
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self._subtitle_backend: SubtitleBackend = (
+            subtitle_backend if subtitle_backend is not None else FFmpegSubtitleBackend()
+        )
 
     # ------------------------------------------------------------------
     # Public
@@ -74,8 +76,8 @@ class VideoOrchestrator:
         Returns
         -------
         dict
-            Keys: ``output_path``, ``workspace``, ``title``, ``format``,
-            ``subtitles_enabled``.
+            Keys: ``output_path``, ``title``, ``format``, ``subtitles_enabled``.
+            The final video is always at ``output_path`` inside ``output_dir``.
         """
         logger.info("=== Starting video generation: %s ===", config.title)
 
@@ -85,7 +87,7 @@ class VideoOrchestrator:
 
         # 2. Generate audio from speech text
         audio_path = str(workspace / "speech.mp3")
-        logger.info("[Step 1/5] Generating TTS audio …")
+        logger.info("[1/4] Generating TTS audio …")
         tts_adapter.generate_speech(
             text=config.speech_content,
             output_path=audio_path,
@@ -108,7 +110,7 @@ class VideoOrchestrator:
             aspect_ratio = "9:16"
 
         # 3. Prepare visual assets
-        logger.info("[Step 2/5] Preparing visual assets …")
+        logger.info("[2/4] Preparing visual assets …")
         visual_files = self._prepare_visuals(config, str(workspace), aspect_ratio, final_width, final_height)
 
         if not visual_files:
@@ -118,17 +120,17 @@ class VideoOrchestrator:
 
         # 4. (Optional) Modify images with AI
         if config.image_modification_instructions:
-            logger.info("[Step 3/5] Applying image modifications …")
+            logger.info("[+] Applying image modifications …")
             visual_files = image_adapter.modify_images(
                 visual_files, config.image_modification_instructions,
             )
         else:
-            logger.info("[Step 3/5] Skipping image modifications (no instructions provided).")
+            logger.debug("Image modifications skipped (no instructions provided).")
 
         # 5. Generate subtitle segments
         segments: List[Dict] = []
         if config.subtitles_enabled:
-            logger.info("[Step 4/5] Generating subtitle segments …")
+            logger.info("[3/4] Generating subtitle segments …")
             
             # Determine total duration for subtitle scaling
             total_duration = config.length_seconds
@@ -147,19 +149,17 @@ class VideoOrchestrator:
                 total_duration=total_duration,
             )
         else:
-            logger.info("[Step 4/5] Subtitles disabled — skipping.")
+            logger.debug("Subtitles disabled — skipping.")
 
         # 6. Assemble final video
-        logger.info("[Step 5/5] Assembling final video …")
+        logger.info("[4/4] Assembling final video …")
         output_path = assembler_adapter.assemble_video(
             audio_path=audio_path,
             visual_files=visual_files,
-            segments=segments,
             title=config.title,
             output_dir=str(workspace),
             output_format=config.output_format.value,
             background_music=config.background_music,
-            subtitles_enabled=config.subtitles_enabled,
             width=final_width,
             height=final_height,
         )
@@ -169,14 +169,38 @@ class VideoOrchestrator:
                 f"Video assembly failed: output file not found at {output_path}"
             )
 
+        # 7. (Optional) Burn subtitles onto the assembled video
+        if config.subtitles_enabled and segments:
+            logger.info("[+] Burning subtitles …")
+            output_filename = f"{sanitize_filename(config.title)}.{config.output_format.value}"
+            output_path = self._subtitle_backend.burn_subtitles(
+                video_path=output_path,
+                segments=segments,
+                output_dir=str(workspace),
+                output_filename=output_filename,
+                output_format=config.output_format.value,
+                width=final_width,
+                height=final_height,
+            )
+            if not output_path or not os.path.exists(output_path):
+                raise RuntimeError("Subtitle burn-in failed: output file not found.")
+
+        # 8. Promote final video out of the workspace into output_dir
+        final_filename = Path(output_path).name
+        final_path = self.output_dir / final_filename
+        if Path(output_path).resolve() != final_path.resolve():
+            import shutil
+            shutil.move(output_path, final_path)
+            logger.info("Video promoted → %s", final_path)
+            output_path = str(final_path)
+
         logger.info("=== Video complete: %s ===", output_path)
 
-        # 7. Cleanup workspace temporary files
+        # 9. Cleanup workspace temporary files
         self._cleanup_workspace(workspace)
 
         return {
             "output_path": output_path,
-            "workspace": str(workspace),
             "title": config.title,
             "format": config.output_format.value,
             "subtitles_enabled": config.subtitles_enabled,
@@ -187,13 +211,12 @@ class VideoOrchestrator:
     # ------------------------------------------------------------------
 
     def _cleanup_workspace(self, workspace: Path) -> None:
-        """Remove temporary files and directories from the workspace.
-        
-        Keeps only the 'final' directory (if exists) or the final output file,
-        and the audio/visual assets that might be useful for reference.
-        Deletes 'temp' and other transient folders.
+        """Remove transient files from the workspace directory.
+
+        Deletes the ``temp/`` subdirectory (if present) and any moviepy
+        scratch files matching ``*TEMP_MPY*``. All other workspace contents
+        (audio, visuals) are left in place.
         """
-        import shutil
         temp_dir = workspace / "temp"
         if temp_dir.exists():
             logger.info("Cleaning up temporary directory: %s", temp_dir)
@@ -208,6 +231,17 @@ class VideoOrchestrator:
             except Exception as e:
                 logger.warning("Could not remove transient file %s: %s", transient, e)
 
+    def _save_uploaded_images(self, uploads: dict, dest_dir: str) -> List[str]:
+        """Write in-memory image bytes to *dest_dir* and return the file paths."""
+        saved: List[str] = []
+        for filename, data in uploads.items():
+            path = os.path.join(dest_dir, filename)
+            with open(path, "wb") as f:
+                f.write(data)
+            logger.info("Saved uploaded image → %s", path)
+            saved.append(path)
+        return saved
+
     def _prepare_visuals(
         self, config: VideoConfiguration, workspace: str, aspect_ratio: str, width: int, height: int
     ) -> List[str]:
@@ -216,7 +250,14 @@ class VideoOrchestrator:
         os.makedirs(visuals_dir, exist_ok=True)
 
         if config.visual_assets.asset_type == VisualAssetType.IMAGE_SEQUENCE:
-            images = config.visual_assets.images or []
+            images = list(config.visual_assets.images or [])
+
+            # Persist any in-memory uploads (from UI) to the workspace.
+            if config.visual_assets.uploaded_images:
+                images.extend(
+                    self._save_uploaded_images(config.visual_assets.uploaded_images, visuals_dir)
+                )
+
             if not images:
                 logger.warning("IMAGE_SEQUENCE selected but no images provided.")
                 return []

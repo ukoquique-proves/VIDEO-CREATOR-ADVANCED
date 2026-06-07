@@ -212,37 +212,9 @@ class TestSubtitleAdapter:
 # =========================================================================== #
 
 class TestAssemblerAdapter:
-    def test_subtitle_burn_in_called_when_enabled(self, tmp_path):
-        """When subtitles are enabled, subtitle_renderer.burn_subtitles must be invoked."""
+    def test_backend_assemble_called(self, tmp_path):
+        """Backend.assemble should be called with audio, visuals, and metadata."""
         from src import assembler_adapter
-        from src import subtitle_renderer as sr
-
-        fake_video = str(tmp_path / "raw.mp4")
-        open(fake_video, "w").close()
-        subtitled = str(tmp_path / "subtitled_raw.mp4")
-        open(subtitled, "w").close()
-
-        mock_backend = MagicMock()
-        mock_backend.assemble.return_value = fake_video
-        segments = [{"text": "Hello", "start": 0.0, "end": 1.0, "duration_estimate": 1.0}]
-
-        with patch.object(sr, "burn_subtitles", return_value=subtitled) as mock_burn:
-            result = assembler_adapter.assemble_video(
-                audio_path="fake.mp3",
-                visual_files=["fake.png"],
-                segments=segments,
-                subtitles_enabled=True,
-                output_dir=str(tmp_path),
-                backend=mock_backend,
-            )
-
-        mock_burn.assert_called_once()
-        assert result == subtitled
-
-    def test_subtitle_burn_in_skipped_when_disabled(self, tmp_path):
-        """When subtitles are disabled, burn_subtitles must not be called."""
-        from src import assembler_adapter
-        from src import subtitle_renderer as sr
 
         fake_video = str(tmp_path / "raw.mp4")
         open(fake_video, "w").close()
@@ -250,17 +222,38 @@ class TestAssemblerAdapter:
         mock_backend = MagicMock()
         mock_backend.assemble.return_value = fake_video
 
-        with patch.object(sr, "burn_subtitles") as mock_burn:
-            assembler_adapter.assemble_video(
-                audio_path="fake.mp3",
-                visual_files=["fake.png"],
-                segments=[],
-                subtitles_enabled=False,
-                output_dir=str(tmp_path),
-                backend=mock_backend,
-            )
+        result = assembler_adapter.assemble_video(
+            audio_path="fake.mp3",
+            visual_files=["fake.png"],
+            output_dir=str(tmp_path),
+            title="my_video",
+            backend=mock_backend,
+        )
 
-        mock_burn.assert_not_called()
+        mock_backend.assemble.assert_called_once()
+        assert result == fake_video
+
+    def test_backend_does_not_receive_subtitle_kwargs(self, tmp_path):
+        """Backend.assemble must never receive segments or subtitles_enabled."""
+        from src import assembler_adapter
+
+        fake_video = str(tmp_path / "lingo.mp4")
+        open(fake_video, "w").close()
+
+        mock_backend = MagicMock()
+        mock_backend.assemble.return_value = fake_video
+
+        assembler_adapter.assemble_video(
+            audio_path="fake.mp3",
+            visual_files=["fake.png"],
+            output_dir=str(tmp_path),
+            title="no_captions_test",
+            backend=mock_backend,
+        )
+
+        _, kwargs = mock_backend.assemble.call_args
+        assert "subtitles_enabled" not in kwargs
+        assert "segments" not in kwargs
 
     def test_local_fallback_used_when_lingo_unavailable(self, tmp_path):
         """When the backend returns None, _local_moviepy_assemble must be called."""
@@ -276,42 +269,12 @@ class TestAssemblerAdapter:
             result = assembler_adapter.assemble_video(
                 audio_path="fake.mp3",
                 visual_files=["fake.png"],
-                segments=[],
-                subtitles_enabled=False,
                 output_dir=str(tmp_path),
                 backend=mock_backend,
             )
 
         mock_local.assert_called_once()
         assert result == fake_video
-
-    def test_lingo_called_without_captions(self, tmp_path):
-        """Backend.assemble must not receive segments or subtitles_enabled."""
-        from src import assembler_adapter
-        from src import subtitle_renderer as sr
-
-        fake_video = str(tmp_path / "lingo.mp4")
-        open(fake_video, "w").close()
-        subtitled = str(tmp_path / "subtitled_lingo.mp4")
-        open(subtitled, "w").close()
-
-        mock_backend = MagicMock()
-        mock_backend.assemble.return_value = fake_video
-
-        with patch.object(sr, "burn_subtitles", return_value=subtitled):
-            assembler_adapter.assemble_video(
-                audio_path="fake.mp3",
-                visual_files=["fake.png"],
-                segments=[{"text": "Hi", "start": 0.0, "end": 1.0, "duration_estimate": 1.0}],
-                subtitles_enabled=True,
-                output_dir=str(tmp_path),
-                title="no_captions_test",
-                backend=mock_backend,
-            )
-
-        _, kwargs = mock_backend.assemble.call_args
-        assert "subtitles_enabled" not in kwargs
-        assert "segments" not in kwargs
 
     def test_moviepy_import_error_raises_runtime_error(self, tmp_path):
         """A broken moviepy install should raise RuntimeError with a clear message."""
@@ -331,8 +294,6 @@ class TestAssemblerAdapter:
                 assembler_adapter.assemble_video(
                     audio_path="fake.mp3",
                     visual_files=["fake.png"],
-                    segments=[],
-                    subtitles_enabled=False,
                     output_dir=str(tmp_path),
                     backend=mock_backend,
                 )

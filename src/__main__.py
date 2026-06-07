@@ -1,4 +1,4 @@
-"""Entry point for ``python -m videocreation``."""
+"""Entry point for ``python -m src``."""
 from src.main import main
 
 if __name__ == "__main__":

@@ -34,7 +34,7 @@
 - **Subtitle Performance Boost**: Replaced moviepy-based subtitle burn-in with an ffmpeg-based approach in `src/subtitle_renderer.py`. This reduces processing time from ~35 minutes to less than 1 minute for long videos by using the `subtitles` filter and stream copying audio.
 - **FFmpeg Path Escaping**: Improved SRT and font path escaping in `src/subtitle_renderer.py`. The `subtitles` filter now uses an explicit `fontsdir` and references the exact font family name ("Liberation Sans") for robust rendering across environments.
 - **Subtitle Sync Improvement**: `src/orchestrator.py` now measures the actual generated audio duration to scale subtitle segments when `length_seconds` is not provided, ensuring better synchronization.
-- **Progress Tracking Fix**: Unified step log numbering in `src/orchestrator.py` to a consistent 5-step pipeline (1/5 to 5/5), including explicit logs for optional steps like image modification.
+- **Progress Tracking Fix**: Reworked step log numbering in `src/orchestrator.py` to a 4-step pipeline (`[1/4]`–`[4/4]`) covering the mandatory steps. The optional image modification step is logged as `[+]` when active and suppressed at DEBUG level when skipped, avoiding a misleading fixed denominator.
 
 ### Tests
 - `test_modify_images_passthrough` renamed to `test_modify_images_raises_not_implemented` and updated to assert `NotImplementedError` is raised.

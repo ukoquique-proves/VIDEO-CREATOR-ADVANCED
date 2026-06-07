@@ -1,7 +1,9 @@
 """
 VideoCreation — Configurable video generation pipeline.
 
-Integrates with Lingo_PERSONAS for TTS, AI image generation, and video assembly.
+Accepts speech text, visual assets, and styling options to produce a complete video file.
+Lingo_PERSONAS is an optional integration used for AI image generation and video assembly;
+TTS runs independently via edge_tts with no Lingo dependency.
 """
 
 from src.schema import VideoConfiguration, VisualAssetType, VisualAssetConfig, OutputFormat

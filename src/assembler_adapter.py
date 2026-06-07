@@ -4,34 +4,24 @@ Assembler Adapter — video assembly bridge to Lingo_PERSONAS VideoAssembler.
 Falls back to a pure-moviepy local assembly if the Lingo_PERSONAS import
 is unavailable.
 
-Subtitle rendering is delegated entirely to ``src.subtitle_renderer``, which
-is independent of Lingo and fixes the descender-clipping bug present in
-Lingo's caption renderer.
+Subtitle burn-in is handled by the orchestrator as a separate post-processing
+step; this adapter is responsible only for assembling audio and visuals.
 """
 
 import os
 import logging
-import re
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from src import config_loader
-from src import subtitle_renderer
 from src.backends import AssemblerBackend
 from src.backends.lingo_assembler_backend import LingoAssemblerBackend
+from src.utils import sanitize_filename
 
 logger = logging.getLogger(__name__)
 
 # Module-level default backend — instantiated once, shared across calls.
 # Pass a different backend to assemble_video() to override (e.g. in tests).
 _default_backend: AssemblerBackend = LingoAssemblerBackend()
-
-
-def _sanitize_filename(title: str) -> str:
-    """Return a filesystem-safe version of title for use in filenames."""
-    sanitized = re.sub(r'[/\\:*?"<>|\x00]', "_", title)
-    sanitized = sanitized.replace(" ", "_")
-    sanitized = re.sub(r"_+", "_", sanitized).strip("_")
-    return sanitized or "untitled"
 
 
 # ---------------------------------------------------------------------------
@@ -41,18 +31,19 @@ def _sanitize_filename(title: str) -> str:
 def assemble_video(
     audio_path: str,
     visual_files: List[str],
-    segments: List[Dict],
     *,
     title: str = "untitled",
     output_dir: str = "output",
     output_format: str = "mp4",
     background_music: Optional[str] = None,
-    subtitles_enabled: bool = False,
     width: Optional[int] = None,
     height: Optional[int] = None,
     backend: Optional[AssemblerBackend] = None,
 ) -> str:
-    """Assemble a final video from audio, visuals, and optional subtitles.
+    """Assemble audio and visuals into a video file.
+
+    Subtitle burn-in is not handled here — the orchestrator applies it as a
+    separate post-processing step via ``subtitle_renderer.burn_subtitles``.
 
     Parameters
     ----------
@@ -64,7 +55,7 @@ def assemble_video(
     Returns
     -------
     str
-        Absolute path to the final video file.
+        Absolute path to the assembled video file.
     """
     cfg = config_loader.video()
     if width is None:
@@ -72,9 +63,8 @@ def assemble_video(
     if height is None:
         height = cfg.get("height", 1920)
     os.makedirs(output_dir, exist_ok=True)
-    output_filename = f"{_sanitize_filename(title)}.{output_format}"
+    output_filename = f"{sanitize_filename(title)}.{output_format}"
 
-    # Always assemble without captions first — subtitle_renderer handles those.
     active_backend = backend if backend is not None else _default_backend
     path = active_backend.assemble(
         audio_path=audio_path,
@@ -92,19 +82,6 @@ def assemble_video(
             visual_files=visual_files,
             output_dir=output_dir,
             output_filename=output_filename,
-            width=width,
-            height=height,
-        )
-
-    # Burn subtitles onto the assembled video using the subtitle renderer.
-    if subtitles_enabled and segments:
-        logger.info("Burning subtitles onto assembled video …")
-        path = subtitle_renderer.burn_subtitles(
-            video_path=path,
-            segments=segments,
-            output_dir=output_dir,
-            output_filename=output_filename,
-            output_format=output_format,
             width=width,
             height=height,
         )

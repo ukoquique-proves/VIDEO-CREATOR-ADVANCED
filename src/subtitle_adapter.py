@@ -29,9 +29,9 @@ def generate_subtitle_segments(
     total_duration:
         If provided, segments are scaled to fit this duration exactly.
     words_per_second:
-        Estimated speaking rate. Defaults to config value (2.5).
+        Estimated speaking rate. Defaults to config value (``subtitles.words_per_second``).
     max_words_per_chunk:
-        Maximum words per subtitle line. Defaults to config value (10).
+        Maximum words per subtitle line. Defaults to config value (``subtitles.max_words_per_chunk``).
 
     Returns
     -------
@@ -42,7 +42,7 @@ def generate_subtitle_segments(
     if words_per_second is None:
         words_per_second = cfg.get("words_per_second", 2.5)
     if max_words_per_chunk is None:
-        max_words_per_chunk = cfg.get("max_words_per_chunk", 10)
+        max_words_per_chunk = cfg.get("max_words_per_chunk", 8)
 
     words = text.split()
     if not words:

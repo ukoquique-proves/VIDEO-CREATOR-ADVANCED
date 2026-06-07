@@ -24,6 +24,7 @@ from src.schema import (
     OutputFormat,
 )
 from src.orchestrator import VideoOrchestrator
+from src.utils import sanitize_filename
 
 
 # --------------------------------------------------------------------------- #
@@ -62,15 +63,28 @@ def _mock_copy_images(image_paths, output_dir):
     return copied
 
 
-def _mock_assemble_video(audio_path, visual_files, segments, **kwargs):
+def _mock_assemble_video(audio_path, visual_files, **kwargs):
     """Write a stub file to simulate video assembly."""
     output_dir = kwargs.get("output_dir", "/tmp")
     fmt = kwargs.get("output_format", "mp4")
     title = kwargs.get("title", "test")
     os.makedirs(output_dir, exist_ok=True)
-    out = os.path.join(output_dir, f"{title.replace(' ', '_')}.{fmt}")
+    out = os.path.join(output_dir, f"{sanitize_filename(title)}.{fmt}")
     Path(out).write_text("fake-video")
     return out
+
+
+class _MockSubtitleBackend:
+    """Subtitle backend stub — passes video through unchanged and records calls."""
+
+    def __init__(self):
+        self.call_count = 0
+        self.call_args = None
+
+    def burn_subtitles(self, video_path, segments, **kwargs):
+        self.call_count += 1
+        self.call_args = {"video_path": video_path, "segments": segments, **kwargs}
+        return video_path
 
 
 # --------------------------------------------------------------------------- #
@@ -80,17 +94,20 @@ def _mock_assemble_video(audio_path, visual_files, segments, **kwargs):
 @pytest.fixture(autouse=True)
 def _patch_adapters():
     """Mock all external adapters so tests are fast and offline."""
+    mock_subtitle_backend = _MockSubtitleBackend()
     with (
         patch("src.orchestrator.tts_adapter.generate_speech", side_effect=_mock_generate_speech),
         patch("src.orchestrator.image_adapter.generate_from_prompts", side_effect=_mock_generate_from_prompts) as mock_gen,
         patch("src.orchestrator.image_adapter.copy_provided_images", side_effect=_mock_copy_images),
         patch("src.orchestrator.image_adapter.modify_images", side_effect=lambda paths, _instr: paths) as mock_modify,
         patch("src.orchestrator.assembler_adapter.assemble_video", side_effect=_mock_assemble_video) as mock_assemble,
+        patch("src.orchestrator.FFmpegSubtitleBackend", return_value=mock_subtitle_backend),
     ):
         yield {
             "modify_images": mock_modify,
             "generate_from_prompts": mock_gen,
             "assemble_video": mock_assemble,
+            "subtitle_backend": mock_subtitle_backend,
         }
 
 
@@ -234,6 +251,38 @@ class TestImageModification:
         orch.create_video(cfg)
 
         _patch_adapters["modify_images"].assert_not_called()
+
+
+class TestSubtitleBurnIn:
+    """Subtitle burn-in is orchestrated via SubtitleBackend, not wired to a concrete module."""
+
+    def test_burn_subtitles_called_when_enabled(self, sample_images, tmp_output_dir, _patch_adapters):
+        orch = VideoOrchestrator(output_dir=tmp_output_dir)
+        cfg = VideoConfiguration(
+            title="Burn Test",
+            speech_content="Testing subtitle burn-in orchestration.",
+            visual_assets=VisualAssetConfig(
+                asset_type=VisualAssetType.IMAGE_SEQUENCE,
+                images=sample_images,
+            ),
+            subtitles_enabled=True,
+        )
+        orch.create_video(cfg)
+        assert _patch_adapters["subtitle_backend"].call_count == 1
+
+    def test_burn_subtitles_not_called_when_disabled(self, sample_images, tmp_output_dir, _patch_adapters):
+        orch = VideoOrchestrator(output_dir=tmp_output_dir)
+        cfg = VideoConfiguration(
+            title="No Burn Test",
+            speech_content="No subtitle burn-in.",
+            visual_assets=VisualAssetConfig(
+                asset_type=VisualAssetType.IMAGE_SEQUENCE,
+                images=sample_images,
+            ),
+            subtitles_enabled=False,
+        )
+        orch.create_video(cfg)
+        assert _patch_adapters["subtitle_backend"].call_count == 0
 
 
 class TestNoVisualsRaises:

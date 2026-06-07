@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import Dict, List, Optional
 from enum import Enum
 
 
@@ -53,6 +53,10 @@ class VisualAssetConfig(BaseModel):
     prompts: Optional[List[str]] = Field(
         default=None,
         description="Text prompts for AI image generation if using TEXT_PROMPTS",
+    )
+    uploaded_images: Optional[Dict[str, bytes]] = Field(
+        default=None,
+        description="In-memory image uploads keyed by filename (used by the UI)",
     )
 
 

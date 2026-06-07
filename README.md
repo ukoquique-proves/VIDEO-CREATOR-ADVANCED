@@ -2,7 +2,7 @@
 
 A configurable video generation pipeline that accepts user-defined content — speech text, visual assets, and styling options — and produces a complete video file.
 
-Built on top of the [Lingo_PERSONAS](../../../VIDEO_PERSONAS/Lingo_PERSONAS/) engine for TTS, AI image generation, and video assembly.
+Lingo_PERSONAS is an optional integration used for AI image generation and video assembly. TTS runs independently via edge_tts with no Lingo dependency.
 
 ---
 
@@ -17,15 +17,15 @@ Built on top of the [Lingo_PERSONAS](../../../VIDEO_PERSONAS/Lingo_PERSONAS/) en
 │  TTS     │  Image   │  Subtitle     │  Assembler            │
 │  Adapter │  Adapter │  Adapter      │  Adapter              │
 │          │          │               │                       │
-│ edge_tts │ Footage  │ Word-rate     │ VideoAssembler        │
-│ (free)   │ GenV2    │ estimation    │ (moviepy)             │
-│          │ +Pillow  │               │                       │
-│          │ fallback │               │                       │
+│ edge_tts │ Picsum · │ Word-rate     │ LingoAssembler        │
+│ (free,   │ FootageG │ estimation    │ backend               │
+│  no      │ enV2 ·   │               │ (moviepy              │
+│  Lingo)  │ Pillow   │               │  fallback)            │
 └──────────┴──────────┴───────────────┴───────────────────────┘
-                         │
-                         ▼
+                            │
+                  (optional)▼
               Lingo_PERSONAS Engine
-        (TTS backends · Image providers · moviepy)
+          (Image providers · moviepy)
 ```
 
 ### Module Overview
@@ -37,7 +37,7 @@ Built on top of the [Lingo_PERSONAS](../../../VIDEO_PERSONAS/Lingo_PERSONAS/) en
 | `src/tts_adapter.py` | Text-to-speech (edge_tts + silent fallback) |
 | `src/image_adapter.py` | AI image generation (FootageGeneratorV2 + Pillow fallback) |
 | `src/subtitle_adapter.py` | Subtitle segment generation (word-rate model) |
-| `src/subtitle_renderer.py` | Pillow-based subtitle burn-in (alpha blending, descender fix) |
+| `src/subtitle_renderer.py` | ffmpeg ASS-based subtitle burn-in (precise positioning, descender fix) |
 | `src/assembler_adapter.py` | Final video assembly (LingoAssemblerBackend + moviepy fallback) |
 | `src/backends/__init__.py` | `AssemblerBackend` protocol definition |
 | `src/backends/lingo_assembler_backend.py` | Lingo_PERSONAS VideoAssembler encapsulated behind the backend interface |
@@ -133,7 +133,9 @@ print(f"Video saved: {result['output_path']}")
 | `image_modification_instructions` | str \| None | None | AI image editing instructions |
 | `subtitles_enabled` | bool | False | Burn subtitles into the video |
 | `output_format` | OutputFormat | mp4 | `mp4`, `mov`, `avi`, or `webm` |
+| `orientation` | Orientation | `vertical` | `vertical` (9:16) or `horizontal` (16:9) |
 | `tts_backend` | TTSBackend \| None | None | Per-video TTS backend override (`edge_tts`, `azure`, `openai`, `fish_tts`) |
+| `tts_rate` | str \| None | None | Per-video speaking rate override (e.g. `"-10%"`, `"+5%"`) |
 | `image_engine` | ImageEngine \| None | None | Per-video image engine override (`pollinations`, `huggingface`) |
 | `image_style` | str \| None | None | Per-video image style override (e.g. `cinematic`, `photorealistic`) |
 
@@ -213,12 +215,12 @@ VideoCreation/
 
 ---
 
-## Integration with Lingo_PERSONAS
+## Lingo_PERSONAS Integration (Optional)
 
-This project is designed to integrate with the existing [Lingo_PERSONAS](/root/a_VIDEO_GENERATION/VIDEO_PERSONAS/Lingo_PERSONAS) codebase:
+Lingo_PERSONAS is an optional dependency. The project runs fully standalone without it.
 
-- **TTS**: Uses `edge_tts` (free Microsoft TTS) via Lingo's backend
-- **Image Generation**: Uses `FootageGeneratorV2` with Pollinations/HuggingFace/Picsum providers
-- **Video Assembly**: Uses `VideoAssembler` with moviepy v2
+- **TTS**: Runs independently via `edge_tts` — no Lingo involvement
+- **Image Generation**: Uses `FootageGeneratorV2` (Lingo) when available, falls back to Picsum → Pillow placeholders
+- **Video Assembly**: Uses `LingoAssemblerBackend` (Lingo) when available, falls back to a local moviepy implementation
 
-Each adapter has a **built-in fallback** so the project works standalone even without Lingo_PERSONAS installed.
+To enable Lingo integration, ensure the `Lingo_PERSONAS` package is on the Python path. The `lingo_utils.py` module handles path injection automatically.

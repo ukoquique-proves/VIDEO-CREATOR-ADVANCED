@@ -10,5 +10,5 @@
 
 **Fix:** This is intended behavior for the fast, offline-friendly placeholder mode. For actual AI-generated images that match your prompts, ensure that:
 1. `use_picsum` is set to `false` in your config.
-2. You have a working AI image provider configured (like Pollinations or HuggingFace) via Lingo_PERSONAS.
+2. You have a working AI image provider configured. Set `image_engine` to `pollinations` or `huggingface` in `config/default_config.yaml` or via the `image_engine` field in `VideoConfiguration`.
 
