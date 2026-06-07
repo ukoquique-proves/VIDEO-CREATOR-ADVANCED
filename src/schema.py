@@ -95,3 +95,7 @@ class VideoConfiguration(BaseModel):
         default=None,
         description="Image style preset for this video, e.g. 'cinematic' (overrides config default)",
     )
+    tts_rate: Optional[str] = Field(
+        default=None,
+        description="Speaking rate for this video, e.g. '-10%' (overrides config default)",
+    )

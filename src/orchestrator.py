@@ -85,12 +85,13 @@ class VideoOrchestrator:
 
         # 2. Generate audio from speech text
         audio_path = str(workspace / "speech.mp3")
-        logger.info("[Step 1/4] Generating TTS audio …")
+        logger.info("[Step 1/5] Generating TTS audio …")
         tts_adapter.generate_speech(
             text=config.speech_content,
             output_path=audio_path,
             language=config.language.value,
             method=config.tts_backend.value if config.tts_backend else None,
+            rate=config.tts_rate,
         )
 
         # Determine orientation dimensions
@@ -107,7 +108,7 @@ class VideoOrchestrator:
             aspect_ratio = "9:16"
 
         # 3. Prepare visual assets
-        logger.info("[Step 2/4] Preparing visual assets …")
+        logger.info("[Step 2/5] Preparing visual assets …")
         visual_files = self._prepare_visuals(config, str(workspace), aspect_ratio, final_width, final_height)
 
         if not visual_files:
@@ -117,15 +118,17 @@ class VideoOrchestrator:
 
         # 4. (Optional) Modify images with AI
         if config.image_modification_instructions:
-            logger.info("Applying image modifications …")
+            logger.info("[Step 3/5] Applying image modifications …")
             visual_files = image_adapter.modify_images(
                 visual_files, config.image_modification_instructions,
             )
+        else:
+            logger.info("[Step 3/5] Skipping image modifications (no instructions provided).")
 
         # 5. Generate subtitle segments
         segments: List[Dict] = []
         if config.subtitles_enabled:
-            logger.info("[Step 3/4] Generating subtitle segments …")
+            logger.info("[Step 4/5] Generating subtitle segments …")
             
             # Determine total duration for subtitle scaling
             total_duration = config.length_seconds
@@ -144,10 +147,10 @@ class VideoOrchestrator:
                 total_duration=total_duration,
             )
         else:
-            logger.info("[Step 3/4] Subtitles disabled — skipping.")
+            logger.info("[Step 4/5] Subtitles disabled — skipping.")
 
         # 6. Assemble final video
-        logger.info("[Step 4/4] Assembling final video …")
+        logger.info("[Step 5/5] Assembling final video …")
         output_path = assembler_adapter.assemble_video(
             audio_path=audio_path,
             visual_files=visual_files,
@@ -160,6 +163,11 @@ class VideoOrchestrator:
             width=final_width,
             height=final_height,
         )
+
+        if not output_path or not os.path.exists(output_path):
+            raise RuntimeError(
+                f"Video assembly failed: output file not found at {output_path}"
+            )
 
         logger.info("=== Video complete: %s ===", output_path)
 

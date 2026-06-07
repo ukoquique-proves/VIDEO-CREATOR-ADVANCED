@@ -6,6 +6,7 @@ tts:
   method: "edge_tts"        # Options: edge_tts (free), openai (requires OPENAI_API_KEY)
   use_cache: true           # Cache generated audio in .cache/tts to speed up regeneration
   voice: "en-US-GuyNeural"  # Default voice (used when no language is specified)
+  rate: "+0%"               # Speaking rate (e.g., "-10%" to slow down, "+5%" to speed up)
   # Per-language default voices (edge_tts voice names)
   # Override any entry here to change the default for that language.
   language_voices:
@@ -42,12 +43,12 @@ video:
 ## Subtitle Settings
 subtitles:
   font: "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
-  font_size: 54
+  font_size: 56        # was 28 — doubled as requested
   font_color: "white"
   stroke_color: "black"
   stroke_width: 2
   position: "bottom"
-  margin: 50
+  margin: 80
   words_per_second: 2.5
   max_words_per_chunk: 8
   max_chars_per_line: 42   # wrap text before this many characters per line

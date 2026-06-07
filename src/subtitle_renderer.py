@@ -1,25 +1,28 @@
 """
-Subtitle Renderer — Pillow-based subtitle burn-in, independent of Lingo_PERSONAS.
+Subtitle Renderer — ffmpeg-based subtitle burn-in using ASS format for precision.
 
-Exposes two public functions:
-  - ``burn_subtitles()``  — composites timed subtitle frames onto an assembled video
-  - ``render_subtitle_frame()`` — renders a single RGBA subtitle overlay image
-
-Key design: line height is derived from ``font.getmetrics()`` (ascent + descent)
-rather than ``textbbox``, which clips descenders for characters like p, q, g, y, j.
+Replaces the SRT approach with ASS (Advanced Substation Alpha) to ensure
+pixel-perfect positioning, font scaling, and background boxes.
 """
 
 import logging
+import os
+import subprocess
+import tempfile
 import textwrap
+import uuid
 from typing import Dict, List
 
-import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from src import config_loader
 
 logger = logging.getLogger(__name__)
 
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 def burn_subtitles(
     video_path: str,
@@ -30,122 +33,175 @@ def burn_subtitles(
     width: int,
     height: int,
 ) -> str:
-    """Composite subtitle frames onto an assembled video using alpha blending.
-
-    Pre-renders all subtitle segments to RGBA numpy arrays, then blends them
-    onto each video frame via a ``VideoClip(make_frame)`` pass. This avoids
-    moviepy's RGBA compositing ambiguity and correctly preserves transparency.
+    """Burn subtitles onto a video using ffmpeg and ASS format.
 
     Returns
     -------
     str
         Path to the subtitled output video.
     """
-    import os
+    if not segments:
+        logger.warning("burn_subtitles: no segments provided — returning original video.")
+        return video_path
 
+    valid = [s for s in segments if s.get("text", "").strip() and s.get("end", 0) > s.get("start", 0)]
+    if not valid:
+        return video_path
+
+    run_id = str(uuid.uuid4())[:8]
+    output_path = os.path.join(output_dir, f"subtitled_{run_id}_{output_filename}")
+
+    # Write ASS to a temp file next to the output
+    ass_fd, ass_path = tempfile.mkstemp(suffix=".ass", dir=output_dir)
     try:
-        from moviepy import VideoFileClip, VideoClip
-    except ImportError as exc:
-        raise RuntimeError(
-            f"moviepy is required for subtitle burn-in but could not be imported: {exc}. "
-            "Ensure moviepy==2.1.2 is installed."
-        ) from exc
+        with os.fdopen(ass_fd, "w", encoding="utf-8") as f:
+            f.write(_segments_to_ass(valid, width, height))
 
+        success = _ffmpeg_burn(video_path, ass_path, output_path)
+        if success:
+            logger.info("Subtitle burn-in complete → %s", output_path)
+            return output_path
+        else:
+            logger.error("ffmpeg burn-in failed — returning original video.")
+            return video_path
+    finally:
+        try:
+            os.unlink(ass_path)
+        except OSError:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# ASS generation — font_name derivado del path en vez de hardcodeado
+# ---------------------------------------------------------------------------
+
+_FONT_NAME_MAP = {
+    "liberationsans-regular":  "Liberation Sans",
+    "liberationsans-bold":     "Liberation Sans",
+    "liberationserif-regular": "Liberation Serif",
+    "dejavusans":              "DejaVu Sans",
+    "dejavusans-bold":         "DejaVu Sans",
+    "arial":                   "Arial",
+}
+
+
+def _font_name_from_path(font_path: str) -> str:
+    """Derive an ASS-compatible font family name from a font file path."""
+    import os as _os
+    stem = _os.path.splitext(_os.path.basename(font_path))[0].lower().replace("_", "-")
+    if stem in _FONT_NAME_MAP:
+        return _FONT_NAME_MAP[stem]
+    return " ".join(word.capitalize() for word in stem.replace("-", " ").split())
+
+
+def _segments_to_ass(segments: List[Dict], width: int, height: int) -> str:
+    """Convert segment dicts to ASS format string with embedded styles."""
     scfg = config_loader.subtitles()
-    font_path = scfg.get(
-        "font",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-    )
-    font_size    = int(scfg.get("font_size", 54))
-    font_color   = scfg.get("font_color", "white")
-    stroke_color = scfg.get("stroke_color", "black")
-    stroke_width = min(int(scfg.get("stroke_width", 2)), 8)  # clamp: O(n²) render cost
-    margin       = int(scfg.get("margin", 50))
+    
+    font_path    = scfg.get("font", "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf")
+    font_name    = _font_name_from_path(font_path)
+    font_size    = int(scfg.get("font_size", 22))
+    font_color   = _color_to_ass(scfg.get("font_color", "white"))
+    stroke_color = _color_to_ass(scfg.get("stroke_color", "black"))
+    stroke_width = int(scfg.get("stroke_width", 1))
+    margin_v     = int(scfg.get("margin", 120))
     position     = scfg.get("position", "bottom")
     max_chars    = int(scfg.get("max_chars_per_line", 42))
 
-    try:
-        font = ImageFont.truetype(font_path, font_size)
-    except OSError:
-        logger.warning("Font not found at %s — using Pillow default.", font_path)
-        font = ImageFont.load_default()
+    # ASS Alignment: 2 = bottom-center, 8 = middle-center
+    alignment = 8 if position == "middle" else 2
 
-    video = VideoFileClip(video_path)
-    try:
-        fps = video.fps
+    header = f"""[Script Info]
+ScriptType: v4.00+
+PlayResX: {width}
+PlayResY: {height}
+ScaledBorderAndShadow: yes
 
-        # Pre-render all subtitle frames as RGBA numpy arrays with their time ranges.
-        rendered: List[Dict] = []
-        for seg in segments:
-            text  = seg.get("text", "").strip()
-            start = seg.get("start", 0.0)
-            end   = seg.get("end", 0.0)
-            if not text or end <= start:
-                continue
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,{font_name},{font_size},{font_color},&H000000FF,{stroke_color},&H99000000,0,0,0,0,100,100,0,0,3,{stroke_width},0,{alignment},60,60,{margin_v},1
 
-            frame = render_subtitle_frame(
-                text=text,
-                width=width,
-                height=height,
-                font=font,
-                font_color=font_color,
-                stroke_color=stroke_color,
-                stroke_width=stroke_width,
-                margin=margin,
-                max_chars=max_chars,
-                position=position,
-            )
-            rgba = np.array(frame, dtype=np.float32)  # H x W x 4, values 0-255
-            rendered.append({"start": start, "end": end, "rgba": rgba})
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+    events = []
+    for seg in segments:
+        start = _seconds_to_ass_timestamp(seg["start"])
+        end   = _seconds_to_ass_timestamp(seg["end"])
+        text  = seg["text"].strip().replace("\n", " ")
+        
+        # Force wrapping to max 2 lines
+        wrapped = textwrap.wrap(text, width=max_chars)
+        wrapped = wrapped[:2]
+        display_text = "\\N".join(wrapped)
+        
+        events.append(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{display_text}")
 
-        if not rendered:
-            logger.warning(
-                "burn_subtitles: no valid subtitle segments to render — "
-                "returning original video without subtitles. "
-                "Check that segments have non-empty text and end > start."
-            )
-            return video_path
+    return header + "\n".join(events)
 
-        def make_frame(t: float) -> np.ndarray:
-            """Alpha-blend the active subtitle onto the video frame at time t."""
-            base = video.get_frame(t).astype(np.float32)  # H x W x 3, 0-255
 
-            for r in rendered:
-                if r["start"] <= t < r["end"]:
-                    rgba  = r["rgba"]
-                    alpha = rgba[:, :, 3:4] / 255.0  # normalise to 0-1
-                    rgb   = rgba[:, :, :3]
-                    base  = base * (1.0 - alpha) + rgb * alpha
-                    break  # only one subtitle active at a time
+def _seconds_to_ass_timestamp(seconds: float) -> str:
+    """Convert float seconds to ASS timestamp: H:MM:SS.cc"""
+    cs = int(round(seconds * 100))
+    h  = cs // 360000;  cs %= 360000
+    m  = cs // 6000;    cs %= 6000
+    s  = cs // 100;     cs %= 100
+    return f"{h:d}:{m:02d}:{s:02d}.{cs:02d}"
 
-            return base.clip(0, 255).astype(np.uint8)
 
-        composite = VideoClip(make_frame, duration=video.duration)
-        if video.audio is not None:
-            composite = composite.with_audio(video.audio)
-        else:
-            logger.warning(
-                "burn_subtitles: source video has no audio track — "
-                "subtitled output will be silent."
-            )
-        try:
-            output_path = os.path.join(output_dir, f"subtitled_{output_filename}")
-            composite.write_videofile(
-                output_path,
-                fps=fps,
-                codec="libx264",
-                audio_codec="aac",
-                threads=4,
-                preset="ultrafast",
-                logger=None,
-            )
-            logger.info("Subtitle burn-in complete → %s", output_path)
-            return output_path
-        finally:
-            composite.close()
-    finally:
-        video.close()
+def _color_to_ass(color: str) -> str:
+    """Convert color to ASS &HAABBGGRR format."""
+    _named = {
+        "white":  "&H00FFFFFF",
+        "black":  "&H00000000",
+        "yellow": "&H0000FFFF",
+        "red":    "&H000000FF",
+        "blue":   "&H00FF0000",
+        "green":  "&H0000FF00",
+    }
+    color = color.strip().lower()
+    if color in _named:
+        return _named[color]
+    if color.startswith("#") and len(color) == 7:
+        r, g, b = color[1:3], color[3:5], color[5:7]
+        return f"&H00{b}{g}{r}".upper()
+    return "&H00FFFFFF"
 
+
+# ---------------------------------------------------------------------------
+# ffmpeg call
+# ---------------------------------------------------------------------------
+
+def _ffmpeg_burn(video_path: str, ass_path: str, output_path: str) -> bool:
+    """Call ffmpeg to burn the ASS subtitles onto the video."""
+    # Robust path escaping for ffmpeg filters
+    p = ass_path.replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+    escaped_ass = f"'{p}'"
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", video_path,
+        "-vf", f"ass={escaped_ass}",
+        "-c:v", "libx264",
+        "-preset", "fast",
+        "-crf", "18",
+        "-c:a", "copy",
+        output_path,
+    ]
+
+    logger.info("Running ffmpeg ASS burn-in …")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    if result.returncode != 0:
+        logger.error("ffmpeg failed:\n%s", result.stderr)
+        return False
+
+    return True
+
+
+# ---------------------------------------------------------------------------
+# render_subtitle_frame — kept for tests
+# ---------------------------------------------------------------------------
 
 def render_subtitle_frame(
     text: str,
@@ -157,17 +213,11 @@ def render_subtitle_frame(
     stroke_width: int,
     margin: int,
     max_chars: int,
-    position: str = "bottom",
 ) -> Image.Image:
-    """Render one subtitle frame as a transparent RGBA image.
-
-    Line height is derived from ``font.getmetrics()`` (ascent + descent),
-    which includes the full descender region. ``textbbox`` only returns the
-    ink bounding box and clips descenders for characters like p, q, g, y, j.
-    """
+    """Kept for tests; still uses Pillow."""
     lines = textwrap.wrap(text, width=max_chars) or [text]
-    stroke_width = min(stroke_width, 8)  # clamp: O(n²) render cost
-
+    lines = lines[:2] # Force 2 lines here too
+    
     ascent, descent = font.getmetrics()
     line_height   = ascent + descent
     line_spacing  = int(line_height * 0.2)
@@ -180,34 +230,25 @@ def render_subtitle_frame(
     box_h = total_text_height + pad_y * 2
 
     box_x = (width - box_w) // 2
-    # box_y calculation changed to support "middle" position
-
-    if position == "middle":
-        box_y = (height - box_h) // 2
-    else:  # default to bottom
-        box_y = height - margin - box_h
+    scfg     = config_loader.subtitles()
+    position = scfg.get("position", "bottom")
+    box_y = (height - box_h) // 2 if position == "middle" else height - margin - box_h
 
     frame = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw  = ImageDraw.Draw(frame)
-
     draw.rounded_rectangle(
         [box_x - 4, box_y - 4, box_x + box_w + 4, box_y + box_h + 4],
-        radius=12,
-        fill=(0, 0, 0, 160),
+        radius=12, fill=(0, 0, 0, 160)
     )
 
     y_cursor = box_y + pad_y
     for line in lines:
         line_w = font.getlength(line)
-        x = box_x + pad_x + (box_w - pad_x * 2 - line_w) // 2
-
-        for dx in range(-stroke_width, stroke_width + 1):
-            for dy in range(-stroke_width, stroke_width + 1):
-                if dx == 0 and dy == 0:
-                    continue
-                draw.text((x + dx, y_cursor + dy), line, font=font, fill=stroke_color)
-
-        draw.text((x, y_cursor), line, font=font, fill=font_color)
+        draw.text(
+            ((width - line_w) // 2, y_cursor),
+            line, font=font, fill=font_color,
+            stroke_width=stroke_width, stroke_fill=stroke_color
+        )
         y_cursor += line_height + line_spacing
 
     return frame

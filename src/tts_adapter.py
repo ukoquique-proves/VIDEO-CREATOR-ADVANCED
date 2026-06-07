@@ -54,6 +54,7 @@ def generate_speech(
     voice: Optional[str] = None,
     language: Optional[str] = None,
     method: Optional[str] = None,
+    rate: Optional[str] = None,
 ) -> str:
     """Convert *text* to an audio file at *output_path*.
 
@@ -72,6 +73,8 @@ def generate_speech(
         ``tts.voice`` value, then ``"en-US-GuyNeural"``.
     method:
         TTS backend to use. Defaults to config value (edge_tts).
+    rate:
+        Speaking rate (e.g. "+0%", "-10%"). Overrides config default.
 
     Returns
     -------
@@ -81,6 +84,9 @@ def generate_speech(
     cfg = config_loader.tts()
     if method is None:
         method = cfg.get("method", "edge_tts")
+
+    if rate is None:
+        rate = cfg.get("rate", "+0%")
 
     # Voice resolution: explicit > language default > config default > hardcoded
     if voice:
@@ -102,13 +108,15 @@ def generate_speech(
         import hashlib, shutil
         cache_dir = Path(".cache/tts")
         cache_dir.mkdir(parents=True, exist_ok=True)
-        hash_str = f"{text}|{method}|{resolved_voice}".encode("utf-8")
-        file_hash = hashlib.md5(hash_str).hexdigest()
+        
+        # Include rate in cache key to ensure changes in speaking rate are reflected
+        key_data = f"{text}|{method}|{resolved_voice}|{rate}".encode("utf-8")
+        file_hash = hashlib.md5(key_data).hexdigest()
         ext = Path(output_path).suffix or ".mp3"
         cache_file = cache_dir / f"{file_hash}{ext}"
         
         if cache_file.exists():
-            logger.info("TTS cache hit for '%s...' voice='%s'.", text[:20], resolved_voice)
+            logger.info("TTS cache hit for '%s...' voice='%s' rate='%s'.", text[:20], resolved_voice, rate)
             shutil.copy2(cache_file, output_path)
             return output_path
 
@@ -116,7 +124,7 @@ def generate_speech(
 
     res = None
     if method == "edge_tts":
-        res = _edge_tts(text, output_path, resolved_voice)
+        res = _edge_tts(text, output_path, resolved_voice, rate)
     elif method == "openai":
         res = _openai_tts(text, output_path, resolved_voice)
     else:
@@ -134,13 +142,13 @@ def generate_speech(
 # edge_tts backend
 # ---------------------------------------------------------------------------
 
-def _edge_tts(text: str, output_path: str, voice: str) -> str:
+def _edge_tts(text: str, output_path: str, voice: str, rate: str = "+0%") -> str:
     """Generate speech with Microsoft Edge TTS (free, no key)."""
     try:
         import edge_tts as edge_tts_module  # type: ignore[import-untyped]
 
         async def _run():
-            communicate = edge_tts_module.Communicate(text, voice)
+            communicate = edge_tts_module.Communicate(text, voice, rate=rate)
             await communicate.save(output_path)
 
         try:

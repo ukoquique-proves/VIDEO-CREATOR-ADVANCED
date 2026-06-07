@@ -1,0 +1,12 @@
+title: "Test de Velocidad TTS"
+speech_content: "Este es un test para verificar que el ajuste de velocidad en el habla funciona correctamente. Estamos probando una reducción del quince por ciento en la velocidad para que la narración sea más clara y pausada. Además, verificamos que los subtítulos se sincronicen perfectamente con este nuevo ritmo."
+visual_assets:
+  asset_type: "text_prompts"
+  prompts:
+    - "A futuristic laboratory with sound waves and digital displays"
+    - "A person listening carefully to a high-quality audio system"
+orientation: "horizontal"
+tts_backend: "edge_tts"
+language: "es"
+subtitles_enabled: true
+tts_rate: "-15%"

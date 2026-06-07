@@ -16,6 +16,25 @@ sys.path.insert(0, str(project_root))
 
 import streamlit as st
 
+if "session_id" not in st.session_state:
+    import uuid
+    st.session_state.session_id = str(uuid.uuid4())
+
+def _cleanup_old_sessions():
+    """Remove temp_uploads folders from previous sessions."""
+    upload_root = project_root / "temp_uploads"
+    if not upload_root.exists():
+        return
+    import shutil, time
+    now = time.time()
+    for session_dir in upload_root.iterdir():
+        if session_dir.is_dir() and session_dir.name != st.session_state.session_id:
+            # If directory is older than 2 hours, clean it up
+            if now - session_dir.stat().st_mtime > 7200:
+                shutil.rmtree(session_dir, ignore_errors=True)
+
+_cleanup_old_sessions()
+
 from src.schema import VideoConfiguration, VisualAssetConfig, VisualAssetType, Orientation, Language
 from src.orchestrator import VideoOrchestrator
 
@@ -36,8 +55,8 @@ class _QueueHandler(logging.Handler):
 def _run_pipeline(config: VideoConfiguration, result_queue: queue.Queue, log_queue: queue.Queue) -> None:
     handler = _QueueHandler(log_queue)
     handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
-    root_logger = logging.getLogger()
-    root_logger.addHandler(handler)
+    src_logger = logging.getLogger("src")  # ← solo logs de este proyecto
+    src_logger.addHandler(handler)
     try:
         orchestrator = VideoOrchestrator(output_dir=str(project_root / "output"))
         result = orchestrator.create_video(config)
@@ -45,7 +64,7 @@ def _run_pipeline(config: VideoConfiguration, result_queue: queue.Queue, log_que
     except Exception as exc:
         result_queue.put(("err", exc))
     finally:
-        root_logger.removeHandler(handler)
+        src_logger.removeHandler(handler)
 
 
 # ---------------------------------------------------------------------------
@@ -167,14 +186,18 @@ def main() -> None:
         images = []
         if uploaded_files:
             import shutil
-            upload_dir = project_root / "temp_uploads"
-            if upload_dir.exists():
-                shutil.rmtree(upload_dir)
+            # Use session-specific directory to avoid deletion on UI interaction
+            upload_dir = project_root / "temp_uploads" / st.session_state.session_id
             upload_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Note: We don't wipe this dir on every interaction anymore, 
+            # only when files are actually present in the uploader.
             for uploaded_file in uploaded_files:
                 target_path = upload_dir / uploaded_file.name
-                with open(target_path, "wb") as f:
-                    f.write(uploaded_file.getbuffer())
+                # Only write if it doesn't exist to save IO
+                if not target_path.exists():
+                    with open(target_path, "wb") as f:
+                        f.write(uploaded_file.getbuffer())
                 images.append(str(target_path.absolute()))
             st.info(f"Using {len(uploaded_files)} uploaded images.")
             

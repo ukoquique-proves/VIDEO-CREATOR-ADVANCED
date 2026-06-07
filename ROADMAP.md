@@ -18,6 +18,7 @@
 - [x] Support multi-language TTS — `Language` enum (`en`, `es`, `zh`, `fr`, `de`, `pt`); voice resolved via config `language_voices` map → hardcoded map → config default
 - [x] Expand TTS dispatcher natively (edge_tts, openai) — decoupled from Lingo_PERSONAS
 - [x] Add TTS audio caching to avoid re-generation
+- [x] **TTS Speaking Rate Control**: Support adjustable speech rate (e.g., `-10%`) via `tts.rate` in config.
 - [ ] Test with long-form speech content (> 5 minutes)
 
 ## Phase 3: AI Image Generation
@@ -61,6 +62,7 @@
 ### 1. External Integrations & Resources
 - [ ] **Pollinations Integration**: Fully implement and test the `pollinations` engine in `src/image_adapter.py` (including timeout and retry logic).
 - [ ] **Case-Study Templates**: Adapt high-quality configuration examples (like `trixie_es.yaml` from the reference project) to the `config/` directory.
+- [ ] **Puppy Linux Promotion Strategy**: Create a dedicated campaign for Puppy Linux focus on modern IA/Programming (Trae, Cursor, Windsurf).
 
 ### 2. Feature Expansion (Visual Assets)
 - [ ] **Mixed Asset Support**: Update `src/schema.py` and `src/orchestrator.py` to support a mix of images and video clips as visual assets.

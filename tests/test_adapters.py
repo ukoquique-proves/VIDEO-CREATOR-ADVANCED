@@ -72,14 +72,14 @@ class TestTTSAdapter:
         out = str(tmp_path / "es.mp3")
         with patch.object(tts_adapter, "_edge_tts", return_value=out) as mock_tts:
             tts_adapter.generate_speech("Hola", out, language="es")
-        mock_tts.assert_called_once_with("Hola", out, "es-AR-TomasNeural")
+        mock_tts.assert_called_once_with("Hola", out, "es-AR-TomasNeural", "+0%")
 
     def test_explicit_voice_overrides_language(self, tmp_path):
         """An explicit voice parameter must take precedence over language."""
         out = str(tmp_path / "override.mp3")
         with patch.object(tts_adapter, "_edge_tts", return_value=out) as mock_tts:
             tts_adapter.generate_speech("Hello", out, voice="en-GB-RyanNeural", language="es")
-        mock_tts.assert_called_once_with("Hello", out, "en-GB-RyanNeural")
+        mock_tts.assert_called_once_with("Hello", out, "en-GB-RyanNeural", "+0%")
 
     def test_unknown_language_falls_back_to_config_voice(self, tmp_path):
         """An unrecognised language code should fall back to the config default voice."""
@@ -99,7 +99,7 @@ class TestTTSAdapter:
             "language_voices": {"es": "es-MX-JorgeNeural"},
         }), patch.object(tts_adapter, "_edge_tts", return_value=out) as mock_tts:
             tts_adapter.generate_speech("Hola", out, language="es")
-        mock_tts.assert_called_once_with("Hola", out, "es-MX-JorgeNeural")
+        mock_tts.assert_called_once_with("Hola", out, "es-MX-JorgeNeural", "+0%")
 
 
 # =========================================================================== #
@@ -134,10 +134,10 @@ class TestImageAdapter:
         paths = image_adapter.copy_provided_images(["/nonexistent/a.png"], out_dir)
         assert paths == []
 
-    def test_modify_images_passthrough(self, sample_images):
-        """modify_images should return originals unchanged (stub)."""
-        result = image_adapter.modify_images(sample_images, "brighten everything")
-        assert result == sample_images
+    def test_modify_images_raises_not_implemented(self, sample_images):
+        """modify_images should raise NotImplementedError (not silently pass through)."""
+        with pytest.raises(NotImplementedError, match="not yet implemented"):
+            image_adapter.modify_images(sample_images, "brighten everything")
 
     def test_engine_pollinations_skips_picsum(self, tmp_path):
         """Passing engine='pollinations' should skip Picsum even if config has use_picsum=True."""

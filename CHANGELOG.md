@@ -2,7 +2,11 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-07
+
 ### Added
+- **Filesystem-Safe Filenames** (`assembler_adapter.py`): New `_sanitize_filename()` helper strips all filesystem-unsafe characters (`/`, `\`, `:`, `*`, `?`, `"`, `<`, `>`, `|`, null bytes), replaces spaces with underscores, collapses consecutive underscores, and falls back to `"untitled"` for blank results. Output filenames are now safe across all operating systems.
+- **Dynamic ASS Font Name** (`subtitle_renderer.py`): New `_FONT_NAME_MAP` lookup table and `_font_name_from_path()` function derive the correct ASS font family name from the configured font file path, instead of hardcoding `"Liberation Sans"`. Supports Liberation Sans/Serif, DejaVu Sans, and Arial out of the box; unknown fonts get a best-effort capitalized name.
 - **OpenAI TTS Support**: Added a native OpenAI TTS dispatcher in `src/tts_adapter.py`. Config can now specify `method: "openai"` to use official OpenAI voices (requires `openai` package and `OPENAI_API_KEY`).
 - **TTS Audio Caching**: Implemented MD5-based caching for generated audio in `src/tts_adapter.py`. Consecutive identical text-to-speech requests now hit `.cache/tts/`, vastly speeding up video generation with unchanged scripts.
 - **UI Improvements**: Added a direct file uploader to `src/ui.py`, allowing users to drag and drop local images instead of manually typing paths.
@@ -10,19 +14,31 @@
 - **Scene-based Roadmap Entry**: Added "Scene-based Precision Mode" to `ROADMAP.md` (Phase 4), with a reference to the `TANDA_3/VideoCreation-06-FALLIDO-MODO_ESCENAS` folder for future implementation.
 
 ### Changed
+- **Thread-Safe Config Loader** (`config_loader.py`): `load()` and `_clear_cache()` are now protected by a `threading.Lock`, preventing race conditions when multiple pipeline threads read config simultaneously. Config is loaded into a temporary dict before updating the cache, and `load()` returns a defensive copy (`dict(_cache)`) to prevent callers from mutating the shared state.
+- **Scoped UI Logger** (`ui.py`): `_run_pipeline()` now attaches the queue handler to `logging.getLogger("src")` instead of the root logger. This isolates pipeline logs to the `src.*` namespace, preventing log pollution across concurrent Streamlit sessions.
+- **Explicit `modify_images` Failure** (`image_adapter.py`): `modify_images()` now raises `NotImplementedError` with a clear message instead of silently returning unmodified images. Users who set `image_modification_instructions` in their config will get an immediate, actionable error telling them to remove the key until the feature is implemented.
 - **TTS Decoupling**: Completely removed `ensure_lingo_on_path` from `src/tts_adapter.py`. The text-to-speech module is now fully decoupled from `Lingo_PERSONAS` and runs natively.
 
 ### Fixed
+- **Width/Height Falsy-Zero Bug** (`assembler_adapter.py`): Replaced `width = width or cfg.get(...)` with `if width is None` guards. Previously, passing `width=0` or `height=0` would silently fall back to config defaults due to Python's truthiness semantics.
+- **Subtitle Output Collision** (`subtitle_renderer.py`): Output filename now includes a UUID-based `run_id` (`subtitled_{run_id}_{filename}`), preventing file overwrites when multiple subtitle burn-in passes run against the same source video.
 - **Subtitle Positioning**: Updated `src/subtitle_renderer.py` and `config/default_config.yaml` to support a configurable `position` ("bottom" or "middle") and adjusted the default `margin` from 300 to 50 pixels for better vertical alignment.
 - **Subtitle Line Optimization**: Adjusted `max_words_per_chunk` (10 -> 8) and `max_chars_per_line` (32 -> 42) to ensure subtitles typically fit in 1 or 2 lines instead of 3.
 - **Audio Guard in Subtitles**: Added a check in `src/subtitle_renderer.py` to handle videos without audio tracks, preventing crashes during the subtitle burn-in process.
-- **Resource Scope Fix**: Moved `output_path` definition in `src/assembler_adapter.py` outside of the `try` block to prevent `UnboundLocalError` when assembly fails.
+- **Resource Scope Fix**: Moved `output_path` definition in `src/assembler_adapter.py` to the very top of `_local_moviepy_assemble` to prevent `UnboundLocalError` when assembly fails before assignment.
+- **Assembly Guard**: Added a runtime check in `src/orchestrator.py` to ensure `assemble_video` returns a valid path and the file exists before finishing.
 - **Lingo Path Priority**: Updated `src/lingo_utils.py` to give `LINGO_ROOT` and config settings priority over the `vendor/` directory, ensuring the correct version of Lingo_PERSONAS is always used.
 - **Relative Path Stability**: Forced `output_dir` to be an absolute path in `src/ui.py`, `src/orchestrator.py`, and `src/main.py`. Also updated `run_test_video.py` and `orchestrator.py` docstrings for consistency.
 - **Asyncio Loop Conflict**: Implemented a `ThreadPoolExecutor` wrapper in `src/tts_adapter.py` using a lambda to ensure the coroutine is created and run within the worker thread, fixing `RuntimeError: This event loop is already running`.
-- **Picsum Partial Results**: Updated `src/image_adapter.py` to keep successful downloads if a batch is incomplete, instead of discarding everything and falling back to AI generation.
+- **Picsum Batch Integrity**: Updated `src/image_adapter.py` to discard partial Picsum results if the batch is incomplete. This forces a fallback to AI generation to ensure the number of images matches the number of prompts, maintaining video synchronization.
+- **Subtitle Performance Boost**: Replaced moviepy-based subtitle burn-in with an ffmpeg-based approach in `src/subtitle_renderer.py`. This reduces processing time from ~35 minutes to less than 1 minute for long videos by using the `subtitles` filter and stream copying audio.
+- **FFmpeg Path Escaping**: Improved SRT and font path escaping in `src/subtitle_renderer.py`. The `subtitles` filter now uses an explicit `fontsdir` and references the exact font family name ("Liberation Sans") for robust rendering across environments.
 - **Subtitle Sync Improvement**: `src/orchestrator.py` now measures the actual generated audio duration to scale subtitle segments when `length_seconds` is not provided, ensuring better synchronization.
-- **Progress Tracking**: Corrected step log numbering in `src/orchestrator.py` (now 1/4 to 4/4) and made optional steps like image modification clearer.
+- **Progress Tracking Fix**: Unified step log numbering in `src/orchestrator.py` to a consistent 5-step pipeline (1/5 to 5/5), including explicit logs for optional steps like image modification.
+
+### Tests
+- `test_modify_images_passthrough` renamed to `test_modify_images_raises_not_implemented` and updated to assert `NotImplementedError` is raised.
+- TTS mock assertions updated to include the `rate` parameter (`'+0%'`) matching the current `_edge_tts` signature.
 
 ## [0.1.0] - 2026-06-06
 

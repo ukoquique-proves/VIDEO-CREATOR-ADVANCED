@@ -95,18 +95,19 @@ def copy_provided_images(image_paths: List[str], output_dir: str) -> List[str]:
 
 
 def modify_images(image_paths: List[str], instructions: str) -> List[str]:
-    """Apply AI modifications to images (placeholder — returns originals).
+    """Apply AI modifications to images.
 
     .. note::
-        Real AI image editing (e.g. SDXL img2img) is planned for Phase 4.
+        Not yet implemented. Raises ``NotImplementedError`` explicitly so
+        the caller gets a clear failure instead of silently getting
+        unmodified images back.
+        Remove ``image_modification_instructions`` from your config to proceed.
     """
-    # TODO: integrate an img2img provider here
-    logger.warning(
-        "modify_images: NOT YET IMPLEMENTED — image_modification_instructions ('%s') "
-        "was set but no modifications were applied; originals returned unchanged.",
-        instructions[:60],
+    raise NotImplementedError(
+        f"image_modification_instructions is set ('{instructions[:60]}') "
+        "but modify_images() is not yet implemented. "
+        "Remove image_modification_instructions from your config to proceed."
     )
-    return image_paths
 
 
 # ---------------------------------------------------------------------------
@@ -164,21 +165,15 @@ def _picsum_batch(
         if idx < len(prompts) - 1:
             time.sleep(0.5)
 
-    if len(paths) < len(prompts) and not paths:
-        logger.warning(
-            "Picsum batch failed: 0/%d images fetched — trying next provider.",
-            len(prompts),
-        )
-        return []  # Caller will fall through to next provider
-
     if len(paths) < len(prompts):
         logger.warning(
-            "Picsum batch incomplete: %d/%d images fetched. "
-            "Using partial results instead of falling back to AI generation.",
+            "Picsum batch incomplete: %d/%d images fetched — "
+            "discarding partial results to maintain video synchronization.",
             len(paths), len(prompts),
         )
+        return []  # Caller will fall through to next provider (e.g. AI generation)
 
-    logger.info("Picsum batch: %d/%d images fetched.", len(paths), len(prompts))
+    logger.info("Picsum batch: %d/%d images fetched successfully.", len(paths), len(prompts))
     return paths
 
 

@@ -11,6 +11,7 @@ Lingo's caption renderer.
 
 import os
 import logging
+import re
 from typing import Dict, List, Optional
 
 from src import config_loader
@@ -23,6 +24,14 @@ logger = logging.getLogger(__name__)
 # Module-level default backend — instantiated once, shared across calls.
 # Pass a different backend to assemble_video() to override (e.g. in tests).
 _default_backend: AssemblerBackend = LingoAssemblerBackend()
+
+
+def _sanitize_filename(title: str) -> str:
+    """Return a filesystem-safe version of title for use in filenames."""
+    sanitized = re.sub(r'[/\\:*?"<>|\x00]', "_", title)
+    sanitized = sanitized.replace(" ", "_")
+    sanitized = re.sub(r"_+", "_", sanitized).strip("_")
+    return sanitized or "untitled"
 
 
 # ---------------------------------------------------------------------------
@@ -58,10 +67,12 @@ def assemble_video(
         Absolute path to the final video file.
     """
     cfg = config_loader.video()
-    width = width or cfg.get("width", 1080)
-    height = height or cfg.get("height", 1920)
+    if width is None:
+        width = cfg.get("width", 1080)
+    if height is None:
+        height = cfg.get("height", 1920)
     os.makedirs(output_dir, exist_ok=True)
-    output_filename = f"{title.replace(' ', '_')}.{output_format}"
+    output_filename = f"{_sanitize_filename(title)}.{output_format}"
 
     # Always assemble without captions first — subtitle_renderer handles those.
     active_backend = backend if backend is not None else _default_backend
@@ -128,6 +139,7 @@ def _local_moviepy_assemble(
 
     logger.info("Local moviepy assembly: %d visuals + audio", len(visual_files))
 
+    output_path = os.path.join(output_dir, output_filename)
     audio = AudioFileClip(audio_path)
     try:
         duration = audio.duration
@@ -139,15 +151,12 @@ def _local_moviepy_assemble(
             img_w, img_h = clip.size
             
             # 1. Resize so the smaller dimension matches the target dimension
-            # (ensure the image completely covers the target area)
             target_ratio = width / height
             img_ratio    = img_w / img_h
             
             if img_ratio > target_ratio:
-                # Image is wider than target aspect ratio -> scale by height
                 clip = clip.with_effects([Resize(height=height)])
             else:
-                # Image is taller than target aspect ratio -> scale by width
                 clip = clip.with_effects([Resize(width=width)])
             
             # 2. Center crop to exactly width x height
@@ -155,7 +164,6 @@ def _local_moviepy_assemble(
             clip = clip.with_effects([Crop(width=width, height=height, x_center=cw//2, y_center=ch//2)])
             clips.append(clip)
 
-        output_path = os.path.join(output_dir, output_filename)
         video = concatenate_videoclips(clips, method="compose").with_audio(audio)
         try:
             fps = config_loader.video().get("fps", 30)
