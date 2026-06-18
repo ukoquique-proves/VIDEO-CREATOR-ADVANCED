@@ -20,9 +20,11 @@ Usage::
     print(result["output_path"])
 """
 
+import json
 import logging
 import os
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -31,6 +33,28 @@ from src import tts_adapter, image_adapter, subtitle_adapter, assembler_adapter,
 from src.backends import SubtitleBackend
 from src.backends.ffmpeg_subtitle_backend import FFmpegSubtitleBackend
 from src.utils import sanitize_filename
+
+
+def _probe_audio_duration(path: str) -> float:
+    """Return audio duration in seconds using ffprobe, or raise on failure."""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "json",
+                path,
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        data = json.loads(result.stdout)
+        duration = float(data["format"]["duration"])
+        return duration
+    except Exception as exc:
+        raise RuntimeError(f"ffprobe duration measurement failed: {exc}") from exc
 
 logger = logging.getLogger(__name__)
 
@@ -136,13 +160,24 @@ class VideoOrchestrator:
             total_duration = config.length_seconds
             if total_duration is None:
                 try:
-                    from moviepy import AudioFileClip
-                    audio = AudioFileClip(audio_path)
-                    total_duration = audio.duration
-                    audio.close()
-                    logger.info("Measured audio duration: %.2fs", total_duration)
+                    total_duration = _probe_audio_duration(audio_path)
+                    logger.info("Measured audio duration via ffprobe: %.2fs", total_duration)
                 except Exception as exc:
-                    logger.warning("Could not measure audio duration (%s) — falling back to estimation.", exc)
+                    logger.warning(
+                        "Could not measure audio duration via ffprobe (%s) — falling back to moviepy.", exc
+                    )
+                    try:
+                        from moviepy import AudioFileClip
+                        audio = AudioFileClip(audio_path)
+                        total_duration = audio.duration
+                        audio.close()
+                        logger.info("Measured audio duration via moviepy: %.2fs", total_duration)
+                    except Exception as exc2:
+                        logger.warning(
+                            "Could not measure audio duration via moviepy (%s) — leaving total_duration unset.",
+                            exc2,
+                        )
+                        total_duration = None
 
             segments = subtitle_adapter.generate_subtitle_segments(
                 text=config.speech_content,

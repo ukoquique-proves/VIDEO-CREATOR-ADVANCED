@@ -2,11 +2,10 @@
 Image Adapter — AI image generation & modification bridge.
 
 Provider priority:
+  0. Picsum (seeded)  — used only when `engine="picsum"` is explicitly requested
   1. Lingo_PERSONAS FootageGeneratorV2  — used for AI image generation when available
-     (provider order: Cloudflare Workers AI → SiliconFlow → HuggingFace → Pollinations)
+     (provider order: Cloudflare Workers AI → SiliconFlow → Pollinations → HuggingFace)
   2. Pillow placeholder fallback  — offline / testing
-
-Picsum is only used when `engine="picsum"` is explicitly requested.
 """
 
 import os
@@ -41,13 +40,16 @@ def generate_from_prompts(
 ) -> List[str]:
     """Generate one image per prompt and return a list of file paths.
 
-    Provider priority: Picsum (seeded) → FootageGeneratorV2 → Pillow placeholders.
+    Provider priority: Picsum (seeded, only if ``engine="picsum"``) →
+    FootageGeneratorV2 (Lingo) → Pillow placeholders.
     """
     cfg = config_loader.image()
     if style is None:
         style = cfg.get("style", "photorealistic")
     if aspect_ratio is None:
         aspect_ratio = cfg.get("aspect_ratio", "9:16")
+    if engine is None:
+        engine = cfg.get("engine")
 
     if width is None or height is None:
         vcfg = config_loader.video()
@@ -73,7 +75,7 @@ def generate_from_prompts(
     # 2. FootageGeneratorV2 (Lingo)
     gen_dir = os.path.join(output_dir, "generated")
     os.makedirs(gen_dir, exist_ok=True)
-    lingo_paths = _try_footage_generator(prompts, gen_dir, style, aspect_ratio)
+    lingo_paths = _try_footage_generator(prompts, gen_dir, style, aspect_ratio, engine)
     if lingo_paths:
         return lingo_paths
 
@@ -101,17 +103,14 @@ def copy_provided_images(image_paths: List[str], output_dir: str) -> List[str]:
 def modify_images(image_paths: List[str], instructions: str) -> List[str]:
     """Apply AI modifications to images.
 
-    .. note::
-        Not yet implemented. Raises ``NotImplementedError`` explicitly so
-        the caller gets a clear failure instead of silently getting
-        unmodified images back.
-        Remove ``image_modification_instructions`` from your config to proceed.
+    This feature is a placeholder. For now, it logs a warning and returns
+    the input image paths unchanged so the pipeline can continue.
     """
-    raise NotImplementedError(
-        f"image_modification_instructions is set ('{instructions[:60]}') "
-        "but modify_images() is not yet implemented. "
-        "Remove image_modification_instructions from your config to proceed."
+    logger.warning(
+        "image_modification_instructions is set, but modify_images() is not yet implemented. "
+        "Skipping image modification and continuing with existing visuals."
     )
+    return image_paths
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +190,7 @@ def _try_footage_generator(
     output_dir: str,
     style: str,
     aspect_ratio: str,
+    engine: Optional[str] = None,
 ) -> Optional[List[str]]:
     """Attempt to use FootageGeneratorV2 from Lingo_PERSONAS.
 
@@ -212,6 +212,7 @@ def _try_footage_generator(
             cloudflare_token=os.environ.get('CLOUDFLARE_API_TOKEN', ''),
             siliconflow_key=os.environ.get('SILICONFLOW_API_KEY', ''),
             huggingface_key=os.environ.get('HUGGINGFACE_API_KEY', ''),
+            preferred_engine=engine,
         )
         paths = gen.generate_images_batch(prompts, style=style, aspect_ratio=aspect_ratio, delay=3.0)
         return paths if paths else None

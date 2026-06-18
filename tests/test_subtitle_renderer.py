@@ -2,6 +2,8 @@
 Unit tests for src.subtitle_renderer — Pillow-based subtitle frame renderer.
 """
 
+import logging
+
 import numpy as np
 import pytest
 from PIL import ImageFont
@@ -74,6 +76,23 @@ class TestRenderSubtitleFrame:
             stroke_width=2, margin=300, max_chars=32,
         )
         assert frame.size == (1080, 1920)
+
+    def test_long_segment_truncation_logs_warning(self, caplog):
+        caplog.set_level(logging.WARNING)
+        segments = [
+            {
+                "start": 0.0,
+                "end": 2.0,
+                "text": "This is a very long subtitle segment that will wrap into more than two lines when the max characters per line setting is small.",
+            }
+        ]
+
+        subtitle_renderer._segments_to_ass(segments, width=1080, height=1920)
+
+        assert any(
+            "truncated to 2 lines" in record.message
+            for record in caplog.records
+        ), "Expected a warning when subtitle text is truncated to two lines"
 
     def test_empty_text_returns_transparent_frame(self):
         """Empty text should produce a fully transparent frame without raising."""

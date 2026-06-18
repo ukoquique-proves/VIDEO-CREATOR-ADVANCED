@@ -40,7 +40,8 @@ class FootageGeneratorV2(FootageGeneratorBase):
                  huggingface_key: str = None,
                  siliconflow_key: str = None,
                  cloudflare_account_id: str = None,
-                 cloudflare_token: str = None):
+                 cloudflare_token: str = None,
+                 preferred_engine: str = None):
         """
         Initialize the footage generator with provider failover support.
         
@@ -66,22 +67,65 @@ class FootageGeneratorV2(FootageGeneratorBase):
         self.siliconflow_key = siliconflow_key or os.environ.get('SILICONFLOW_API_KEY', '')
         self.cloudflare_account_id = cloudflare_account_id or os.environ.get('CLOUDFLARE_ACCOUNT_ID', '')
         self.cloudflare_token = cloudflare_token or os.environ.get('CLOUDFLARE_API_TOKEN', '')
+        self.preferred_engine = preferred_engine
         
         # Create the provider manager with automatic failover for AI generation
         generated_dir = self.output_dir / 'generated'
-        self.provider_manager = create_default_manager(
-            huggingface_key=self.huggingface_key,
-            siliconflow_key=self.siliconflow_key,
-            cloudflare_account_id=self.cloudflare_account_id,
-            cloudflare_token=self.cloudflare_token,
+        self.provider_manager = self._build_provider_manager(
             output_dir=str(generated_dir)
         )
         
         print(f"✅ FootageGeneratorV2 initialized with provider architecture")
-        print(f"   - AI Providers: {len(self.provider_manager.providers)} (Pollinations + HuggingFace + Picsum fallback)")
+        print(f"   - AI Providers: {len(self.provider_manager.providers)} ({', '.join([p.name for p in self.provider_manager.providers])})")
         print(f"   - Stock APIs: Pexels={'✅' if self.pexels_key else '❌'}, Pixabay={'✅' if self.pixabay_key else '❌'}")
         print(f"   - Architecture: Fully decoupled with automatic failover")
     
+    def _build_provider_manager(self, output_dir: str):
+        """Build the provider manager, optionally respecting a preferred engine."""
+        if self.preferred_engine:
+            manager = ProviderManager(output_dir=output_dir)
+            engine = self.preferred_engine.lower()
+
+            if engine == 'cloudflare':
+                manager.add_cloudflare(
+                    self.cloudflare_account_id,
+                    self.cloudflare_token,
+                    config={'timeout': 90, 'max_retries': 2}
+                )
+            elif engine == 'siliconflow':
+                manager.add_siliconflow(
+                    self.siliconflow_key,
+                    config={'timeout': 60, 'max_retries': 2}
+                )
+            elif engine == 'pollinations':
+                manager.add_pollinations(config={'timeout': 60, 'max_retries': 2})
+            elif engine == 'huggingface':
+                if self.huggingface_key:
+                    manager.add_huggingface_flux(
+                        self.huggingface_key,
+                        config={'timeout': 60}
+                    )
+                    manager.add_huggingface_sd(
+                        self.huggingface_key,
+                        config={'timeout': 90}
+                    )
+                else:
+                    print("⚠️  Preferred engine 'huggingface' selected but HUGGINGFACE_API_KEY is missing.")
+            else:
+                print(f"⚠️  Unknown preferred engine '{self.preferred_engine}' — using default provider chain.")
+
+            if manager.providers:
+                return manager
+            print("⚠️  Preferred engine unavailable, falling back to default provider chain.")
+
+        return create_default_manager(
+            huggingface_key=self.huggingface_key,
+            siliconflow_key=self.siliconflow_key,
+            cloudflare_account_id=self.cloudflare_account_id,
+            cloudflare_token=self.cloudflare_token,
+            output_dir=output_dir
+        )
+
     def generate_image(self, prompt: str, style: str = 'photorealistic',
                        aspect_ratio: str = '9:16') -> str:
         """

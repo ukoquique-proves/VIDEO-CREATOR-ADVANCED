@@ -8,7 +8,7 @@
 
 **Cause:** Picsum is a stock photo library, not an AI generator. Its seed endpoint (`picsum.photos/seed/{seed}/...`) is deterministic but not semantic — it assigns a random photo to a seed string without understanding what the text means.
 
-**Fix:** Picsum is now only used as a last resort fallback or when `image_engine: picsum` is explicitly set. By default the pipeline goes straight to Cloudflare Workers AI → SiliconFlow → HuggingFace. Make sure your `.env` has at least one of those keys configured. See the Pollinations 402 entry below for provider details.
+**Fix:** Picsum is now only used as a last resort fallback or when `image_engine: picsum` is explicitly set. By default the pipeline goes straight to Cloudflare Workers AI → SiliconFlow → Pollinations → HuggingFace. Make sure your `.env` has at least one of those keys configured. See the Pollinations 402 entry below for provider details.
 
 
 ## Pollinations returns HTTP 402 on VPS / cloud servers

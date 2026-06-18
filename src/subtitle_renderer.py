@@ -125,13 +125,20 @@ Style: Default,{font_name},{font_size},{font_color},&H000000FF,{stroke_color},&H
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     events = []
-    for seg in segments:
+    for index, seg in enumerate(segments, start=1):
         start = _seconds_to_ass_timestamp(seg["start"])
         end   = _seconds_to_ass_timestamp(seg["end"])
         text  = seg["text"].strip().replace("\n", " ")
         
         # Force wrapping to max 2 lines
         wrapped = textwrap.wrap(text, width=max_chars)
+        if len(wrapped) > 2:
+            logger.warning(
+                "Subtitle segment %d was wrapped into %d lines and truncated to 2 lines. "
+                "Remaining text will be omitted from burned-in subtitles.",
+                index,
+                len(wrapped),
+            )
         wrapped = wrapped[:2]
         display_text = "\\N".join(wrapped)
         

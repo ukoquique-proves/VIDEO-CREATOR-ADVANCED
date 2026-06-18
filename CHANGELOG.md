@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+- `src/orchestrator.py` — audio duration measurement for subtitle scaling now tries `ffprobe` first, then falls back to `moviepy.AudioFileClip` only if needed.
+- `src/image_adapter.py` — `modify_images()` now warns and returns existing visuals when image modification is not yet implemented, instead of hard-failing the pipeline.
+- `src/assembler_adapter.py` — when background music is requested but the Lingo assembler is unavailable, the adapter now raises a clear runtime error instead of silently producing a music-free video via local fallback.
+- `src/subtitle_renderer.py` — ASS subtitle wrapping now logs a warning when a segment is wrapped into more than two lines and truncated to two lines, preventing invisible subtitle loss without notice.
+
 ## [0.3.0] - 2026-06-08
 
 ### Added

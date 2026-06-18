@@ -134,10 +134,13 @@ class TestImageAdapter:
         paths = image_adapter.copy_provided_images(["/nonexistent/a.png"], out_dir)
         assert paths == []
 
-    def test_modify_images_raises_not_implemented(self, sample_images):
-        """modify_images should raise NotImplementedError (not silently pass through)."""
-        with pytest.raises(NotImplementedError, match="not yet implemented"):
-            image_adapter.modify_images(sample_images, "brighten everything")
+    def test_modify_images_logs_warning_and_skips(self, sample_images):
+        """modify_images should warn and return input paths when unimplemented."""
+        with patch.object(image_adapter, "logger") as mock_logger:
+            paths = image_adapter.modify_images(sample_images, "brighten everything")
+
+        mock_logger.warning.assert_called_once()
+        assert paths == sample_images
 
     def test_engine_pollinations_skips_picsum(self, tmp_path):
         """Passing engine='pollinations' should skip Picsum and use the requested provider."""
@@ -160,6 +163,19 @@ class TestImageAdapter:
         mock_picsum.assert_called_once()
         mock_lingo.assert_not_called()
         assert paths == ["fake.jpg"]
+
+    def test_config_engine_defaults_to_config_value(self, tmp_path):
+        """When no engine is passed explicitly, the default config engine should be used."""
+        out_dir = str(tmp_path / "imgs")
+        with patch("src.image_adapter.config_loader.image", return_value={"style": "photorealistic", "aspect_ratio": "9:16", "engine": "cloudflare"}), \
+             patch("src.image_adapter.ensure_lingo_on_path", return_value=None), \
+             patch("src.image_adapter._try_footage_generator", return_value=["cloudflare.png"]) as mock_try:
+            paths = image_adapter.generate_from_prompts(["test"], out_dir)
+
+        mock_try.assert_called_once()
+        positional_args, _ = mock_try.call_args
+        assert positional_args[4] == "cloudflare"
+        assert paths == ["cloudflare.png"]
 
 
 # =========================================================================== #
@@ -274,6 +290,22 @@ class TestAssemblerAdapter:
 
         mock_local.assert_called_once()
         assert result == fake_video
+
+    def test_background_music_requested_without_lingo_raises(self, tmp_path):
+        """Requested background music must not be silently dropped when falling back."""
+        from src import assembler_adapter
+
+        mock_backend = MagicMock()
+        mock_backend.assemble.return_value = None
+
+        with pytest.raises(RuntimeError, match="Background music was requested"):
+            assembler_adapter.assemble_video(
+                audio_path="fake.mp3",
+                visual_files=["fake.png"],
+                output_dir=str(tmp_path),
+                backend=mock_backend,
+                background_music="music.mp3",
+            )
 
     def test_moviepy_import_error_raises_runtime_error(self, tmp_path):
         """A broken moviepy install should raise RuntimeError with a clear message."""
