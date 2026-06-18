@@ -1,0 +1,22 @@
+# Test AI Image Generation
+#
+# This config tests the complete video pipeline with AI image generation.
+# Run with:
+#   python -m src.main --config config/test_ai_images.yaml
+
+title: "AI Image Generation Test"
+language: en
+speech_content: |
+  Testing AI image generation.
+  This video confirms the pipeline is working correctly
+  with AI-generated images and automated subtitles.
+visual_assets:
+  asset_type: "text_prompts"
+  prompts:
+    - "A robot with glowing eyes, sci-fi style, dark background"
+    - "A colorful digital network visualization, tech aesthetic"
+image_engine: "cloudflare"
+subtitles_enabled: true
+output_format: "mp4"
+orientation: "vertical"
+length_seconds: 8.0

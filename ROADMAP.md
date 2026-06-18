@@ -25,6 +25,11 @@
 - [x] Integrate Pollinations provider for real AI image generation — live via Lingo_PERSONAS `FootageGeneratorV2` + `PollinationsProvider`
 - [x] Add HuggingFace Flux/SDXL provider with automatic failover — `HuggingFaceFluxProvider` + `HuggingFaceSDProvider` + Picsum fallback already in Lingo's provider architecture
 - [x] Support image style presets (photorealistic, cinematic, artistic, cartoon) — `style` param flows through `generate_images_batch` → `ProviderManager` → each provider
+- [ ] **Refactor Provider Chain** (see `image_provider_refactor_plan.md`):
+  - Remove Picsum from default provider chain
+  - Add `preferred_engine` parameter to `provider_manager.create_default_manager()`
+  - Thread `engine` parameter through `FootageGeneratorV2` → `src/image_adapter.py`
+  - Keep Pollinations as the final free-tier fallback in the orchestrated sequence
 - [ ] Implement image modification via img2img (SDXL or similar)
 - [ ] Add image caching and deduplication
 

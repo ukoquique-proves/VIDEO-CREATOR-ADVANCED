@@ -38,9 +38,11 @@ Lingo_PERSONAS is an optional integration used for AI image generation and video
 | `src/image_adapter.py` | AI image generation (FootageGeneratorV2 + Pillow fallback) |
 | `src/subtitle_adapter.py` | Subtitle segment generation (word-rate model) |
 | `src/subtitle_renderer.py` | ffmpeg ASS-based subtitle burn-in (precise positioning, descender fix) |
+| `src/backends/__init__.py` | `AssemblerBackend` and `SubtitleBackend` protocol definitions |
+| `src/backends/ffmpeg_subtitle_backend.py` | `SubtitleBackend` wrapper for ffmpeg/ASS subtitle burn-in |
 | `src/assembler_adapter.py` | Final video assembly (LingoAssemblerBackend + moviepy fallback) |
-| `src/backends/__init__.py` | `AssemblerBackend` protocol definition |
 | `src/backends/lingo_assembler_backend.py` | Lingo_PERSONAS VideoAssembler encapsulated behind the backend interface |
+| `src/utils.py` | Shared pipeline utilities (filename sanitization, helpers) |
 | `src/lingo_utils.py` | Shared Lingo_PERSONAS path injection utility |
 | `src/config_loader.py` | Reads and caches `config/default_config.yaml` |
 | `src/ui.py` | Streamlit UI for interactive video generation |
@@ -136,12 +138,29 @@ print(f"Video saved: {result['output_path']}")
 | `orientation` | Orientation | `vertical` | `vertical` (9:16) or `horizontal` (16:9) |
 | `tts_backend` | TTSBackend \| None | None | Per-video TTS backend override (`edge_tts`, `azure`, `openai`, `fish_tts`) |
 | `tts_rate` | str \| None | None | Per-video speaking rate override (e.g. `"-10%"`, `"+5%"`) |
-| `image_engine` | ImageEngine \| None | None | Per-video image engine override (`pollinations`, `huggingface`) |
+| `image_engine` | ImageEngine \| None | None | Per-video image engine override (`cloudflare`, `siliconflow`, `huggingface`, `pollinations`, `picsum`) |
 | `image_style` | str \| None | None | Per-video image style override (e.g. `cinematic`, `photorealistic`) |
+
+### Environment Variables
+
+Create a `.env` file at the project root with your API keys:
+
+```env
+CLOUDFLARE_ACCOUNT_ID=your_account_id
+CLOUDFLARE_API_TOKEN=your_api_token
+SILICONFLOW_API_KEY=your_key
+HUGGINGFACE_API_KEY=your_key
+```
+
+All keys are optional — the pipeline falls through to the next available provider automatically.
 
 ---
 
-## Running the Test Suite
+## Testing & Quality Assurance
+
+For a comprehensive testing strategy including unit tests, integration tests, architecture validation, and code quality checks, see [TESTING.md](TESTING.md).
+
+### Running Tests
 
 ```bash
 # Run all tests with verbose output
@@ -192,8 +211,10 @@ VideoCreation/
 │   ├── subtitle_renderer.py
 │   ├── assembler_adapter.py
 │   ├── backends/
-│   │   ├── __init__.py               # AssemblerBackend protocol
+│   │   ├── __init__.py               # AssemblerBackend + SubtitleBackend protocols
+│   │   ├── ffmpeg_subtitle_backend.py # SubtitleBackend implementation using ffmpeg/ASS
 │   │   └── lingo_assembler_backend.py
+│   ├── utils.py                     # shared pipeline helpers
 │   ├── lingo_utils.py
 │   └── config_loader.py
 ├── tests/
@@ -220,7 +241,7 @@ VideoCreation/
 Lingo_PERSONAS is an optional dependency. The project runs fully standalone without it.
 
 - **TTS**: Runs independently via `edge_tts` — no Lingo involvement
-- **Image Generation**: Uses `FootageGeneratorV2` (Lingo) when available, falls back to Picsum → Pillow placeholders
+- **Image Generation**: Uses `FootageGeneratorV2` (Lingo) when available — provider priority: Cloudflare Workers AI → SiliconFlow → Pollinations (blocked on VPS IPs) → HuggingFace → Picsum fallback → Pillow placeholders. Credentials are read from `.env` automatically.
 - **Video Assembly**: Uses `LingoAssemblerBackend` (Lingo) when available, falls back to a local moviepy implementation
 
 To enable Lingo integration, ensure the `Lingo_PERSONAS` package is on the Python path. The `lingo_utils.py` module handles path injection automatically.

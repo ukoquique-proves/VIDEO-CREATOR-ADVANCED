@@ -151,13 +151,16 @@ class VideoOrchestrator:
         else:
             logger.debug("Subtitles disabled — skipping.")
 
+        final_dir = workspace / "final"
+        final_dir.mkdir(parents=True, exist_ok=True)
+
         # 6. Assemble final video
         logger.info("[4/4] Assembling final video …")
         output_path = assembler_adapter.assemble_video(
             audio_path=audio_path,
             visual_files=visual_files,
             title=config.title,
-            output_dir=str(workspace),
+            output_dir=str(final_dir),
             output_format=config.output_format.value,
             background_music=config.background_music,
             width=final_width,
@@ -176,7 +179,7 @@ class VideoOrchestrator:
             output_path = self._subtitle_backend.burn_subtitles(
                 video_path=output_path,
                 segments=segments,
-                output_dir=str(workspace),
+                output_dir=str(final_dir),
                 output_filename=output_filename,
                 output_format=config.output_format.value,
                 width=final_width,
@@ -184,15 +187,6 @@ class VideoOrchestrator:
             )
             if not output_path or not os.path.exists(output_path):
                 raise RuntimeError("Subtitle burn-in failed: output file not found.")
-
-        # 8. Promote final video out of the workspace into output_dir
-        final_filename = Path(output_path).name
-        final_path = self.output_dir / final_filename
-        if Path(output_path).resolve() != final_path.resolve():
-            import shutil
-            shutil.move(output_path, final_path)
-            logger.info("Video promoted → %s", final_path)
-            output_path = str(final_path)
 
         logger.info("=== Video complete: %s ===", output_path)
 

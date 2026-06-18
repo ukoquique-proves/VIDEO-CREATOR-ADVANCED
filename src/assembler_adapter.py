@@ -77,6 +77,11 @@ def assemble_video(
         height=height,
     )
     if path is None:
+        if background_music:
+            logger.warning(
+                "Background music requested but Lingo assembler is unavailable; "
+                "falling back to local moviepy assembly without background music."
+            )
         path = _local_moviepy_assemble(
             audio_path=audio_path,
             visual_files=visual_files,

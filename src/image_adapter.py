@@ -2,17 +2,23 @@
 Image Adapter — AI image generation & modification bridge.
 
 Provider priority:
-  1. Picsum (seed-based)  — free, no auth, deterministic per prompt keyword seed
-  2. Lingo_PERSONAS FootageGeneratorV2  — used only if Picsum fails entirely
-  3. Pillow placeholder fallback  — offline / testing
+  1. Lingo_PERSONAS FootageGeneratorV2  — used for AI image generation when available
+     (provider order: Cloudflare Workers AI → SiliconFlow → HuggingFace → Pollinations)
+  2. Pillow placeholder fallback  — offline / testing
+
+Picsum is only used when `engine="picsum"` is explicitly requested.
 """
 
 import os
 import re
 import time
 import logging
+from pathlib import Path
 from typing import List, Optional
 from urllib.parse import quote
+
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=False)
 
 from src.lingo_utils import ensure_lingo_on_path
 from src import config_loader
@@ -55,16 +61,14 @@ def generate_from_prompts(
 
     os.makedirs(output_dir, exist_ok=True)
 
-    # 1. Picsum seeded by prompt keywords
-    if engine == "picsum" or (engine is None and cfg.get("use_picsum", True)):
+    # 1. Picsum — only when explicitly requested
+    if engine == "picsum":
         stock_dir = os.path.join(output_dir, "stock")
         os.makedirs(stock_dir, exist_ok=True)
         paths = _picsum_batch(prompts, stock_dir, width, height)
         if paths:
             return paths
         logger.warning("Picsum failed or returned partial results — trying next provider.")
-    else:
-        logger.info("Picsum skipped due to engine='%s' or config.", engine)
 
     # 2. FootageGeneratorV2 (Lingo)
     gen_dir = os.path.join(output_dir, "generated")
@@ -136,6 +140,7 @@ def _picsum_batch(
     """Fetch one Picsum image per prompt using a keyword-derived seed.
 
     URL format: https://picsum.photos/seed/{seed}/{width}/{height}.jpg
+    Picsum returns a 302 redirect — must follow with allow_redirects=True.
     Same seed → same image every run. Different prompts → different seeds → different images.
     """
     import requests
@@ -149,7 +154,7 @@ def _picsum_batch(
         logger.info("[%d/%d] Picsum seed='%s' — %s", idx + 1, len(prompts), seed, prompt[:60])
 
         try:
-            response = requests.get(url, timeout=timeout)
+            response = requests.get(url, timeout=timeout, allow_redirects=True)
             if response.status_code == 200:
                 filename  = f"picsum_{idx:03d}_{seed}.jpg"
                 file_path = os.path.join(output_dir, filename)
@@ -190,6 +195,8 @@ def _try_footage_generator(
     """Attempt to use FootageGeneratorV2 from Lingo_PERSONAS.
 
     Returns None if Lingo is not installed. Re-raises runtime errors.
+    Credentials for Cloudflare, SiliconFlow, and HuggingFace are read
+    from environment variables automatically by FootageGeneratorV2.
     """
     try:
         ensure_lingo_on_path()
@@ -199,7 +206,13 @@ def _try_footage_generator(
         return None
 
     try:
-        gen   = FootageGeneratorV2(output_dir=output_dir)
+        gen = FootageGeneratorV2(
+            output_dir=output_dir,
+            cloudflare_account_id=os.environ.get('CLOUDFLARE_ACCOUNT_ID', ''),
+            cloudflare_token=os.environ.get('CLOUDFLARE_API_TOKEN', ''),
+            siliconflow_key=os.environ.get('SILICONFLOW_API_KEY', ''),
+            huggingface_key=os.environ.get('HUGGINGFACE_API_KEY', ''),
+        )
         paths = gen.generate_images_batch(prompts, style=style, aspect_ratio=aspect_ratio, delay=3.0)
         return paths if paths else None
     except Exception as exc:
