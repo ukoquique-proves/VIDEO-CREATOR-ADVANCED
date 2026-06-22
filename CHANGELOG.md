@@ -2,11 +2,54 @@
 
 ## [Unreleased]
 
+### Added
+- `src/schema.py` — `VisualAssetType.MEDIA_SEQUENCE` documented and supported across adapters and the UI (local image/video mixes).
+- `INPUT_FIXING.md` — architecture and implementation plan for relocating all user-provided assets (images, video clips, speech text, and background music) into the per-video workspace.
+
 ### Changed
+- `src/ui.py` — `Visual Source` now offers "User Provided (Local Media)" and accepts common video formats (mp4, mov, webm, mkv, avi) as well as images.
+- `src/assembler_adapter.py` — local moviepy fallback dispatches visual assets by extension, using `VideoFileClip` for video files (stripping embedded audio) and `ImageClip` for images; clips are trimmed or looped to fill assigned durations.
+- `src/orchestrator.py` — when `background_music` is provided, the source file is copied into `workspace/audio` and the workspace-local copy is used for assembly; invalid paths raise `FileNotFoundError` before video assembly starts.
+- `src/utils.py` — added `sanitize_filename_preserve_extension()` so uploaded filenames remain filesystem-safe while retaining their original extension (e.g. `.mp3`, `.png`, `.mp4`).
+- `src/video_gateway.py` — added `VideoGateway` dataclass for dependency injection, enabling `VideoOrchestrator` to accept swappable TTS/image/assembler callables.
+- `src/orchestrator.py` — updated pipeline construction to accept an injected gateway and prefer gateway-provided callables for TTS, image generation/copy, image modification, and assembly.
+- `src/assembler_adapter.py` — default backend selection now prefers a Lingo assembler when available and otherwise uses a native moviepy backend; local fallback now supports mixing `background_music` with narration.
+- `src/backends/native_assembler_backend.py` — new native assembler backend wrappers local moviepy assembly behind the `AssemblerBackend` protocol.
+- `tests/test_video_gateway.py` — added regression coverage for gateway-based orchestrator injection.
+- `tests/test_assembler_local_mix.py` — added regression coverage for local fallback assembly with background music.
+- `src/orchestrator.py` — `create_video()` complexity reduced by extracting private step methods (`_run_tts_audio`, `_resolve_dimensions_and_orientation`, `_prepare_visuals_with_modifications`, `_generate_subtitle_segments`, `_prepare_background_music`, `_assemble_and_burn_video`, `_cleanup_workspace`) for improved readability and testability.
+- `src/orchestrator.py` / `src/assembler_adapter.py` — consolidated audio duration resolution into `_resolve_total_duration()` and threaded the resulting `duration` through subtitle generation and assembly to ensure consistent timing across paths.
+- Repository hygiene: updated `.gitignore` and added `.gitattributes` to exclude generated `output/`, `tmp_real/`, `test_out/`, caches and media files from VCS and `git archive` exports; removed stray tracked test artifact `test_cf_out.png`.
+- Backend initialization: defers heavy backend instantiation (Lingo assembler and FFmpeg subtitle backend) until actually needed and preserves test patchability (`src/assembler_adapter.py` `_get_default_backend()`, `src/orchestrator.py` lazy `FFmpegSubtitleBackend` import).
+
+### Fixed
+- `src/assembler_adapter.py` — import `is_video_file` from `src.utils` so the local moviepy fallback does not raise `NameError` when invoked; this fixes a crash when assembling mixed image/video visual assets without the Lingo assembler available.
+- `src/tts_adapter.py` — guard the TTS cache against zero-byte files: module now removes zero-byte cache entries, skips caching empty generation results, and regenerates a short silent fallback to avoid permanently poisoning the cache.
+- `src/utils.py` / `src/orchestrator.py` — `sanitize_filename()` now replaces runs of `.` with underscores and prevents dot-only results; `VideoOrchestrator.create_video()` validates the resolved workspace path is contained within `output_dir`, preventing path traversal via untrusted titles (e.g. ".." or "../../etc").
+- `tests/test_orchestrator.py` — added regression coverage for background music workspace relocation and invalid background music path handling.
+- `run_test_media_video.py` — new end-to-end smoke test validating `MEDIA_SEQUENCE` feature (multiple video clip concatenation, audio sync, subtitle burn-in) with horizontal orientation and audio-driven duration.
+
+
+## [0.4.0] - 2026-06-18
+
+### Added
+- `src/utils.py` — new shared `sanitize_filename()` utility; consolidates the identical helper that previously existed in both `assembler_adapter.py` and `orchestrator.py`. All callers now import from `src.utils`.
+- `TANDA_6_REVIEW.md` — comprehensive reference guide to architectural improvements from the legacy `TANDA_6-mal/VideoCreation-0000` project. Includes implementation status checkboxes, step-by-step porting instructions with estimated effort (30 minutes to 8 hours per improvement), exact bash commands and code snippets, and a reference table mapping current to legacy files. The six improvements cover: gateway pattern, config isolation, image provider refactor, TTS cache semantics, subtitle backend injection, and integration testing markers.
+- `src/orchestrator.py` — `_cleanup_workspace()` method removes the `temp/` subdirectory and any `*TEMP_MPY*` scratch files left by moviepy after each pipeline run, preventing stale file accumulation across runs.
+- `src/backends/ffmpeg_subtitle_backend.py` — new `FFmpegSubtitleBackend` class wrapping `subtitle_renderer.burn_subtitles` behind the `SubtitleBackend` protocol. The orchestrator now injects this backend at construction time, making the subtitle renderer swappable without touching orchestrator logic.
+
+### Changed
+- `ROADMAP.md` — Phase 3 "Refactor Provider Chain" item now references `TANDA_6_REVIEW.md` alongside `image_provider_refactor_plan.md` for additional architectural guidance.
+- `src/orchestrator.py` — subtitle burn-in is now delegated to an injected `SubtitleBackend` instance (`FFmpegSubtitleBackend` by default) instead of calling `subtitle_renderer` directly; enables backend substitution in tests via constructor injection.
 - `src/orchestrator.py` — audio duration measurement for subtitle scaling now tries `ffprobe` first, then falls back to `moviepy.AudioFileClip` only if needed.
-- `src/image_adapter.py` — `modify_images()` now warns and returns existing visuals when image modification is not yet implemented, instead of hard-failing the pipeline.
-- `src/assembler_adapter.py` — when background music is requested but the Lingo assembler is unavailable, the adapter now raises a clear runtime error instead of silently producing a music-free video via local fallback.
+- `src/image_adapter.py` — `modify_images()` now warns and returns existing visuals when image modification is not yet implemented, instead of raising `NotImplementedError`; the pipeline continues uninterrupted.
+- `src/assembler_adapter.py` — when background music is requested but the Lingo assembler is unavailable, the adapter now preserves the uploaded music via the native MoviePy fallback by mixing it with narration using MoviePy v2 audio effects.
 - `src/subtitle_renderer.py` — ASS subtitle wrapping now logs a warning when a segment is wrapped into more than two lines and truncated to two lines, preventing invisible subtitle loss without notice.
+- `config/default_config.yaml` — `subtitles.font_size` increased from 28 to 56 for better on-screen readability.
+
+### Tests
+- `tests/test_adapters.py` — `test_modify_images_raises_not_implemented` renamed back to `test_modify_images_logs_warning_and_skips` and updated to assert a warning is logged and the original paths are returned unchanged (reverts the `NotImplementedError` assertion from 0.2.0).
+- `tests/test_orchestrator.py` — `_patch_adapters` fixture now mocks `FFmpegSubtitleBackend` with `_MockSubtitleBackend` to assert subtitle burn-in call counts without exercising ffmpeg; `TestSubtitleBurnIn` tests updated accordingly.
 
 ## [0.3.0] - 2026-06-08
 

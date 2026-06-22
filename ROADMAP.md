@@ -25,7 +25,7 @@
 - [x] Integrate Pollinations provider for real AI image generation — live via Lingo_PERSONAS `FootageGeneratorV2` + `PollinationsProvider`
 - [x] Add HuggingFace Flux/SDXL provider with automatic failover — `HuggingFaceFluxProvider` + `HuggingFaceSDProvider` + Picsum fallback already in Lingo's provider architecture
 - [x] Support image style presets (photorealistic, cinematic, artistic, cartoon) — `style` param flows through `generate_images_batch` → `ProviderManager` → each provider
-- [ ] **Refactor Provider Chain** (see `image_provider_refactor_plan.md`):
+- [ ] **Refactor Provider Chain** (see `image_provider_refactor_plan.md` and `TANDA_6_REVIEW.md` for additional architectural candidates):
   - Remove Picsum from default provider chain
   - Add `preferred_engine` parameter to `provider_manager.create_default_manager()`
   - Thread `engine` parameter through `FootageGeneratorV2` → `src/image_adapter.py`
@@ -49,6 +49,12 @@
 - [x] Create CLI tool (`python -m src.main --config video.yaml`) — reads YAML/JSON, validates schema, runs pipeline (Note: original roadmap specified `python -m videocreation`, which requires a proper package install via `pip install -e .` and a `pyproject.toml`)
 - [x] Add YAML example configs (`config/example_english.yaml`, `config/example_spanish.yaml`)
 - [x] Streamlit UI for interactive configuration (`src/ui.py`)
+- [ ] **UI Control Widgets**: Add dropdown selectors to the Streamlit UI for:
+  - Language selection (English, Spanish, Chinese, French, German, Portuguese)
+  - Voice/gender selection (male, female voices per language)
+  - TTS method selection (edge_tts, openai)
+  - Image engine selection (cloudflare, siliconflow, pollinations, huggingface, picsum)
+  - Subtitle position and styling (top/bottom/middle, font size, color)
 - [ ] Add YAML-based batch processing (create multiple videos from one config)
 - [ ] REST API endpoint for remote video generation
 - [ ] Progress callbacks and real-time status updates
@@ -57,6 +63,8 @@
 - [ ] Comprehensive error handling and retry logic
 - [ ] Structured logging with configurable log levels
 - [x] Resource cleanup (moviepy clip and audio handles closed after assembly)
+- [ ] Add an input-relocation architecture review and implementation plan (`INPUT_FIXING.md`)
+- [ ] Add an urgent media input fix checklist and reference file (`TO_FIX.md`)
 - [ ] GPU-accelerated encoding (h264_nvenc)
 - [ ] Docker containerization
 - [ ] CI/CD pipeline with automated testing

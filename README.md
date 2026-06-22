@@ -93,7 +93,8 @@ python -m streamlit run src/ui.py
 
 The UI supports:
 - **Interactive Configuration**: Set titles, speech content, and orientation.
-- **Visual Asset Management**: Upload local images directly or provide AI prompts.
+- **Visual Asset Management**: Upload local images or video clips directly, or provide AI prompts. The UI accepts common image and video formats when "User Provided (Local Media)" is selected.
+- **Background Music Support**: Provide a local audio file path via `background_music`; the file is copied into the video workspace before assembly.
 - **Real-time Logs**: Monitor the generation progress directly in the browser.
 - **Video Preview**: Watch the generated video immediately after assembly.
 
@@ -131,7 +132,7 @@ print(f"Video saved: {result['output_path']}")
 | `speech_content` | str | *required* | Text converted to speech audio |
 | `visual_assets` | VisualAssetConfig | *required* | Images or AI prompts |
 | `length_seconds` | float \| None | None | Target duration in seconds (auto if None) |
-| `background_music` | str \| None | None | Path to background audio |
+| `background_music` | str \| None | None | Path to background audio. The file is copied into `workspace/audio` before assembly. |
 | `image_modification_instructions` | str \| None | None | AI image editing instructions |
 | `subtitles_enabled` | bool | False | Burn subtitles into the video |
 | `output_format` | OutputFormat | mp4 | `mp4`, `mov`, `avi`, or `webm` |
@@ -179,7 +180,7 @@ python -m pytest tests/test_adapters.py -v
 python -m pytest tests/test_subtitle_renderer.py -v
 ```
 
-All tests mock external dependencies (TTS, AI image generation, video assembly) so they run **fast** and **offline** — no API keys or network required.
+Most unit tests mock external dependencies (TTS, AI image generation, video assembly) so they run **fast** and **offline** — no API keys or network required. Some convenience scripts and vendored integration tests rely on `Lingo_PERSONAS` and provider SDKs (e.g. `openai`) and will be skipped when those packages are not available.
 
 ### Test Flows Covered
 

@@ -72,7 +72,7 @@ def burn_subtitles(
 
 
 # ---------------------------------------------------------------------------
-# ASS generation — font_name derivado del path en vez de hardcodeado
+# ASS generation — font name derived from path instead of hardcoded
 # ---------------------------------------------------------------------------
 
 _FONT_NAME_MAP = {
@@ -207,7 +207,7 @@ def _ffmpeg_burn(video_path: str, ass_path: str, output_path: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# render_subtitle_frame — kept for tests
+# render_subtitle_frame — kept for tests only
 # ---------------------------------------------------------------------------
 
 def render_subtitle_frame(
@@ -221,7 +221,7 @@ def render_subtitle_frame(
     margin: int,
     max_chars: int,
 ) -> Image.Image:
-    """Kept for tests; still uses Pillow."""
+    """Test helper only; production rendering uses ASS via ffmpeg."""
     lines = textwrap.wrap(text, width=max_chars) or [text]
     lines = lines[:2] # Force 2 lines here too
     

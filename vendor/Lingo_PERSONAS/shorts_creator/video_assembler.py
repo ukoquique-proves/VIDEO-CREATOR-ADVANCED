@@ -225,12 +225,13 @@ class VideoAssembler:
         file_path = str(file_path)
         
         if file_path.endswith(('.mp4', '.mov', '.avi', '.webm')):
-            clip = VideoFileClip(file_path)
+            # Strip any embedded audio from source clips so the pipeline's
+            # narration/mix audio is the single authoritative audio track.
+            clip = VideoFileClip(file_path).without_audio()
             clip = self._resize_to_aspect_ratio(clip)
 
-            
             if clip.duration < duration:
-                # Loop by concatenating
+                # Loop by concatenating (clips have no audio, safe to repeat)
                 loops_needed = int(duration / clip.duration) + 1
                 clip = concatenate_videoclips([clip] * loops_needed).subclipped(0, duration)
             else:

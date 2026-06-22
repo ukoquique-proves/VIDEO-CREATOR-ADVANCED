@@ -19,6 +19,7 @@ def generate_subtitle_segments(
     total_duration: Optional[float] = None,
     words_per_second: Optional[float] = None,
     max_words_per_chunk: Optional[int] = None,
+    start_offset: float = 0.0,
 ) -> List[Dict]:
     """Split *text* into timed subtitle segments.
 
@@ -79,10 +80,11 @@ def generate_subtitle_segments(
     segments: List[Dict] = []
     cursor = 0.0
     for chunk, dur in zip(chunks, durations):
+        start = max(0.0, cursor + start_offset)
         segments.append({
             "text": chunk,
-            "start": round(cursor, 3),
-            "end": round(cursor + dur, 3),
+            "start": round(start, 3),
+            "end": round(start + dur, 3),
             "duration_estimate": round(dur, 3),
         })
         cursor += dur

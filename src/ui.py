@@ -36,7 +36,7 @@ class _QueueHandler(logging.Handler):
 def _run_pipeline(config: VideoConfiguration, result_queue: queue.Queue, log_queue: queue.Queue) -> None:
     handler = _QueueHandler(log_queue)
     handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
-    src_logger = logging.getLogger("src")  # ← solo logs de este proyecto
+    src_logger = logging.getLogger("src")  # project-local logs only
     src_logger.addHandler(handler)
     try:
         orchestrator = VideoOrchestrator(output_dir=str(project_root / "output"))
@@ -133,8 +133,16 @@ def main() -> None:
     st.header("Visual Assets")
     asset_type_str = st.radio(
         "Visual Source",
-        options=[VisualAssetType.TEXT_PROMPTS.value, VisualAssetType.IMAGE_SEQUENCE.value],
-        format_func=lambda x: "AI Generated (Text Prompts)" if x == "text_prompts" else "User Provided (Local Images)",
+        options=[
+            VisualAssetType.TEXT_PROMPTS.value,
+            VisualAssetType.IMAGE_SEQUENCE.value,
+            VisualAssetType.MEDIA_SEQUENCE.value,
+        ],
+        format_func=lambda x: (
+            "AI Generated (Text Prompts)"
+            if x == "text_prompts"
+            else ("User Provided (Local Images)" if x == "image_sequence" else "User Provided (Local Media — images or videos)")
+        ),
     )
 
     prompts: list = []
@@ -149,11 +157,19 @@ def main() -> None:
         if any(p.startswith("/") or p.lower().endswith((".png", ".jpg", ".jpeg", ".webp")) for p in prompts):
             st.warning("⚠️ Some prompts look like file paths. If you want to use local images, switch the 'Visual Source' above to 'User Provided'.")
     else:
+        # Accept video types too when the user selected the MEDIA_SEQUENCE option
+        if asset_type_str == VisualAssetType.MEDIA_SEQUENCE.value:
+            uploader_types = ["png", "jpg", "jpeg", "webp", "mp4", "mov", "webm", "mkv", "avi"]
+            uploader_help = "Drag and drop image or video files here, or click to browse."
+        else:
+            uploader_types = ["png", "jpg", "jpeg", "webp"]
+            uploader_help = "Drag and drop image files here, or click to browse."
+
         uploaded_files = st.file_uploader(
-            "Drop or select images",
-            type=["png", "jpg", "jpeg", "webp"],
+            "Drop or select files",
+            type=uploader_types,
             accept_multiple_files=True,
-            help="Drag and drop image files here, or click to browse.",
+            help=uploader_help,
         )
 
         raw = st.text_area(
@@ -165,7 +181,7 @@ def main() -> None:
         if uploaded_files:
             # Keep bytes in memory — the orchestrator saves them to disk at pipeline time.
             uploaded_images = {f.name: f.getvalue() for f in uploaded_files}
-            st.info(f"{len(uploaded_files)} image(s) ready to use.")
+            st.info(f"{len(uploaded_files)} file(s) ready to use.")
 
         manual_paths = [p.strip() for p in raw.splitlines() if p.strip()]
         if manual_paths:
@@ -174,17 +190,42 @@ def main() -> None:
 
     st.divider()
 
+    st.header("Audio Assets")
+    uploaded_background_music: dict = {}
+    background_music_path: str = st.text_input(
+        "Background music path (local file)",
+        value="",
+        help="Optional local audio file path for background music.",
+    )
+    uploaded_audio_files = st.file_uploader(
+        "Upload background music",
+        type=["mp3", "wav", "aac", "m4a", "ogg"],
+        accept_multiple_files=False,
+        help="Upload one audio file to use as background music.",
+    )
+    if uploaded_audio_files:
+        uploaded_background_music = {uploaded_audio_files.name: uploaded_audio_files.getvalue()}
+        st.info(f"Background music file ready: {uploaded_audio_files.name}")
+
+    st.divider()
+
     # ---- Generate button ----
     if st.button("🚀 Generate Video", use_container_width=True, disabled=st.session_state.running):
         errors = []
         if not title.strip():
             errors.append("Please provide a video title.")
+        # UI-level guard: prevent path traversal or absolute paths from titles
+        try:
+            if ".." in title or "/" in title or "\\" in title or Path(title).is_absolute():
+                errors.append("Invalid title: remove path separators or '..' sequences.")
+        except Exception:
+            errors.append("Invalid title: contains unsupported characters.")
         if not speech_content.strip():
             errors.append("Please provide speech content.")
         if asset_type_str == VisualAssetType.TEXT_PROMPTS.value and not prompts:
             errors.append("Please provide at least one AI prompt.")
-        if asset_type_str == VisualAssetType.IMAGE_SEQUENCE.value and not images and not uploaded_images:
-            errors.append("Please provide at least one image (upload or path).")
+        if asset_type_str in (VisualAssetType.IMAGE_SEQUENCE.value, VisualAssetType.MEDIA_SEQUENCE.value) and not images and not uploaded_images:
+            errors.append("Please provide at least one image or media file (upload or path).")
         for err in errors:
             st.error(err)
         if errors:
@@ -193,6 +234,8 @@ def main() -> None:
         config = VideoConfiguration(
             title=title,
             speech_content=speech_content,
+            background_music=background_music_path.strip() or None,
+            uploaded_background_music=uploaded_background_music or None,
             visual_assets=VisualAssetConfig(
                 asset_type=VisualAssetType(asset_type_str),
                 prompts=prompts or None,

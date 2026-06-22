@@ -85,14 +85,20 @@ def generate_from_prompts(
 
 
 def copy_provided_images(image_paths: List[str], output_dir: str) -> List[str]:
-    """Validate and copy user-provided images into the workspace."""
+    """Validate and copy user-provided visual files into the workspace.
+
+    Despite the name (kept for backward compatibility), this performs no
+    image-specific validation — it works for any local file, including
+    video clips used via ``VisualAssetType.MEDIA_SEQUENCE``. Prefer the
+    ``copy_provided_media`` alias in new code for clarity.
+    """
     import shutil
     cached_dir = os.path.join(output_dir, "cached")
     os.makedirs(cached_dir, exist_ok=True)
     copied: List[str] = []
     for src in image_paths:
         if not os.path.isfile(src):
-            logger.warning("Image not found, skipping: %s", src)
+            logger.warning("Visual asset not found, skipping: %s", src)
             continue
         dst = os.path.join(cached_dir, os.path.basename(src))
         shutil.copy2(src, dst)
@@ -100,17 +106,21 @@ def copy_provided_images(image_paths: List[str], output_dir: str) -> List[str]:
     return copied
 
 
+# Forward-looking alias — same behavior, clearer name for mixed media callers.
+copy_provided_media = copy_provided_images
+
+
 def modify_images(image_paths: List[str], instructions: str) -> List[str]:
     """Apply AI modifications to images.
 
-    This feature is a placeholder. For now, it logs a warning and returns
-    the input image paths unchanged so the pipeline can continue.
+    This feature is not yet implemented. The pipeline should fail fast when
+    a user explicitly requests image modifications, rather than silently
+    continuing with unchanged visuals.
     """
-    logger.warning(
-        "image_modification_instructions is set, but modify_images() is not yet implemented. "
-        "Skipping image modification and continuing with existing visuals."
+    raise NotImplementedError(
+        "image_modification_instructions is not yet implemented. "
+        "Remove this field from your configuration or wait for the feature."
     )
-    return image_paths
 
 
 # ---------------------------------------------------------------------------
@@ -197,11 +207,39 @@ def _try_footage_generator(
     Returns None if Lingo is not installed. Re-raises runtime errors.
     Credentials for Cloudflare, SiliconFlow, and HuggingFace are read
     from environment variables automatically by FootageGeneratorV2.
+
+    Imports footage_generator_v2 directly via importlib to avoid triggering
+    shorts_creator/__init__.py, which has heavy optional dependencies
+    (openai, json_repair, etc.) that are not required for image generation.
     """
     try:
+        import importlib.util as _ilu
         ensure_lingo_on_path()
-        from shorts_creator.footage_generator_v2 import FootageGeneratorV2  # type: ignore[import-untyped]
-    except (ImportError, Exception) as exc:
+        # Resolve the module file directly to bypass shorts_creator/__init__.py
+        import sys as _sys
+        lingo_root = None
+        for p in _sys.path:
+            candidate = Path(p) / "shorts_creator" / "footage_generator_v2.py"
+            if candidate.exists():
+                lingo_root = p
+                break
+        if lingo_root is None:
+            raise ImportError("footage_generator_v2.py not found on sys.path")
+        spec = _ilu.spec_from_file_location(
+            "shorts_creator.footage_generator_v2",
+            str(Path(lingo_root) / "shorts_creator" / "footage_generator_v2.py"),
+        )
+        mod = _ilu.module_from_spec(spec)
+        # Register parent package stub so relative imports inside the module work
+        if "shorts_creator" not in _sys.modules:
+            import types as _types
+            pkg = _types.ModuleType("shorts_creator")
+            pkg.__path__ = [str(Path(lingo_root) / "shorts_creator")]
+            pkg.__package__ = "shorts_creator"
+            _sys.modules["shorts_creator"] = pkg
+        spec.loader.exec_module(mod)
+        FootageGeneratorV2 = mod.FootageGeneratorV2  # type: ignore[attr-defined]
+    except ImportError as exc:
         logger.warning("FootageGeneratorV2 not available (%s).", exc)
         return None
 

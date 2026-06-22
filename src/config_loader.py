@@ -2,6 +2,7 @@
 Config loader — reads config/default_config.yaml and exposes typed settings.
 """
 
+import copy
 import threading
 from pathlib import Path
 from typing import Any, Dict
@@ -29,7 +30,7 @@ def load() -> Dict[str, Any]:
                     "Ensure 'config/default_config.yaml' exists at the project root."
                 ) from None
             _cache.update(_new)
-        return dict(_cache)
+        return copy.deepcopy(_cache)
 
 
 def _clear_cache() -> None:

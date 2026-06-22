@@ -1,27 +1,94 @@
-# Video outputs
+# ======================================================================
+# Generated Outputs & Artifacts
+# ======================================================================
+
+# Video outputs and media files
 output/
+tmp_real/
+test_out/
+temp_uploads/
 *.mp4
 *.mov
 *.avi
 *.webm
+*.mkv
+*.flv
+*.m4v
 
-# Python
+# Audio and temporary media
+*.mp3
+*.wav
+*.aac
+*.m4a
+*.ogg
+*TEMP_MPY*
+
+# ======================================================================
+# Python Build & Environment
+# ======================================================================
+
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-.pytest_cache/
+*.egg
+*.egg-info/
+dist/
+build/
 
-# IDEs
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Environments
+.venv/
+venv/
+ENV/
+env/
+.env
+.env.local
+.env.*.local
+
+# ======================================================================
+# Cache & Temporary Files
+# ======================================================================
+
+.cache/
+*.pyc
+.DS_Store
+*.swp
+*.swo
+*~
+.~*
+
+# IDEs & Editors
 .vscode/
 .idea/
-*.swp
+*.sublime-workspace
+*.sublime-project
+.emacs.d/
+.netrwhist
 
-# Temporary uploads
-temp_uploads/
+# OS-specific
+Thumbs.db
+.directory
 
-# Cache
-.cache/
+# ======================================================================
+# Project-Specific Artifacts
+# ======================================================================
 
-# Environment variables (secrets — never commit)
-.env
+# Streamlit cache (can be regenerated)
+.streamlit/cache/
+
+# Downloaded or generated test files
+test_cf_out.png
+test_*.png

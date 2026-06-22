@@ -65,6 +65,3 @@ class LingoAssemblerBackend:
         except ImportError as exc:
             logger.warning("Lingo VideoAssembler unavailable (%s) — returning None.", exc)
             return None
-        except Exception as exc:
-            logger.error("Lingo VideoAssembler failed (%s) — returning None.", exc)
-            return None

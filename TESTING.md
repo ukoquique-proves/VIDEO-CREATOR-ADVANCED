@@ -85,7 +85,7 @@ Tests in `tests/` create actual videos with mocked TTS/image generation but real
 - **Minimal video** — images + speech, no subtitles, default mp4
 - **AI image generation** — text prompts instead of image files
 - **Video with subtitles** — subtitle burn-in enabled
-- **Background music** — music mixing path
+- **Background music** — music mixing path and workspace-local audio relocation
 - **Custom output format** — `.webm` output
 - **Image modification** — verifies instruction string handling
 - **Subtitle renderer** — frame size, descender pixel check, text wrapping, empty text

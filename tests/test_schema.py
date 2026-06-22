@@ -51,6 +51,14 @@ class TestVisualAssetConfig:
         assert len(cfg.prompts) == 2
         assert cfg.images is None
 
+    def test_media_sequence(self):
+        cfg = VisualAssetConfig(
+            asset_type=VisualAssetType.MEDIA_SEQUENCE,
+            images=["a.png", "b.mp4"],
+        )
+        assert cfg.asset_type == VisualAssetType.MEDIA_SEQUENCE
+        assert len(cfg.images) == 2
+
 
 class TestVideoConfiguration:
     def test_minimal_valid(self):

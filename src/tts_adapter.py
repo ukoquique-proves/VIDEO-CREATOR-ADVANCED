@@ -118,9 +118,20 @@ def generate_speech(
         cache_file = cache_dir / f"{file_hash}{ext}"
         
         if cache_file.exists():
-            logger.info("TTS cache hit for '%s...' voice='%s' rate='%s'.", text[:20], resolved_voice, rate)
-            shutil.copy2(cache_file, output_path)
-            return output_path
+            # Guard against zero-byte cache poisoning: remove and regenerate if found.
+            try:
+                if cache_file.stat().st_size == 0:
+                    logger.warning(
+                        "TTS cache file is zero bytes (corrupt): %s — removing and regenerating.", cache_file
+                    )
+                    cache_file.unlink()
+                else:
+                    logger.info("TTS cache hit for '%s...' voice='%s' rate='%s'.", text[:20], resolved_voice, rate)
+                    shutil.copy2(cache_file, output_path)
+                    return output_path
+            except FileNotFoundError:
+                # race or removal; fall through to generation
+                pass
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
@@ -134,7 +145,31 @@ def generate_speech(
         res = _generate_silent_audio(output_path)
 
     if use_cache and res and Path(res).exists():
-        shutil.copy2(res, cache_file)
+        try:
+            size = Path(res).stat().st_size
+        except Exception:
+            size = 0
+
+        if size > 0:
+            shutil.copy2(res, cache_file)
+            logger.info("TTS result cached → %s", cache_file)
+        else:
+            logger.warning(
+                "TTS produced a zero-byte audio file for text starting '%s...' — skipping cache and regenerating silent fallback.",
+                text[:20],
+            )
+            try:
+                Path(res).unlink()
+            except Exception:
+                pass
+            # Replace with a short silent audio file to avoid poisoning future cache hits
+            res = _generate_silent_audio(output_path)
+            try:
+                if Path(res).stat().st_size > 0:
+                    shutil.copy2(res, cache_file)
+                    logger.info("Silent fallback cached → %s", cache_file)
+            except Exception:
+                pass
 
     return res
 

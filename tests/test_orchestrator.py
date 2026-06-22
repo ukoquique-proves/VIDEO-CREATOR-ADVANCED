@@ -13,10 +13,13 @@ run fast and without network access.
 """
 
 import os
+import uuid
 import pytest
 from unittest.mock import patch, MagicMock
 from pathlib import Path
 
+from src import image_adapter
+from src.image_adapter import modify_images as _real_modify_images
 from src.schema import (
     VideoConfiguration,
     VisualAssetConfig,
@@ -24,7 +27,7 @@ from src.schema import (
     OutputFormat,
 )
 from src.orchestrator import VideoOrchestrator
-from src.utils import sanitize_filename
+from src.utils import sanitize_filename, sanitize_filename_preserve_extension
 
 
 # --------------------------------------------------------------------------- #
@@ -53,11 +56,11 @@ def _mock_generate_from_prompts(prompts, output_dir, **kwargs):
 def _mock_copy_images(image_paths, output_dir):
     """Copy images by creating stubs."""
     import shutil
-    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(os.path.join(output_dir, "cached"), exist_ok=True)
     copied = []
     for src in image_paths:
         if os.path.isfile(src):
-            dst = os.path.join(output_dir, os.path.basename(src))
+            dst = os.path.join(output_dir, "cached", os.path.basename(src))
             shutil.copy2(src, dst)
             copied.append(dst)
     return copied
@@ -194,6 +197,74 @@ class TestWithBackgroundMusic:
 
         assert os.path.isfile(result["output_path"])
 
+    def test_background_music_is_copied_into_workspace(
+        self, sample_images, sample_audio, tmp_output_dir, _patch_adapters
+    ):
+        orch = VideoOrchestrator(output_dir=tmp_output_dir)
+        cfg = VideoConfiguration(
+            title="With Music Copied",
+            speech_content="Testing background music relocation.",
+            visual_assets=VisualAssetConfig(
+                asset_type=VisualAssetType.IMAGE_SEQUENCE,
+                images=sample_images,
+            ),
+            background_music=sample_audio,
+        )
+
+        result = orch.create_video(cfg)
+
+        assert os.path.isfile(result["output_path"])
+        background_music_path = _patch_adapters["assemble_video"].call_args.kwargs["background_music"]
+        workspace_audio_dir = Path(tmp_output_dir) / sanitize_filename(cfg.title) / "audio"
+
+        assert background_music_path is not None
+        assert Path(background_music_path).parent == workspace_audio_dir
+        assert Path(background_music_path).exists()
+        assert Path(background_music_path).name == Path(sample_audio).name
+
+    def test_uploaded_background_music_is_saved_into_workspace(
+        self, sample_images, sample_audio, tmp_output_dir, _patch_adapters
+    ):
+        orch = VideoOrchestrator(output_dir=tmp_output_dir)
+        with open(sample_audio, "rb") as f:
+            audio_bytes = f.read()
+
+        cfg = VideoConfiguration(
+            title="Uploaded Music",
+            speech_content="Testing uploaded background music.",
+            visual_assets=VisualAssetConfig(
+                asset_type=VisualAssetType.IMAGE_SEQUENCE,
+                images=sample_images,
+            ),
+            uploaded_background_music={Path(sample_audio).name: audio_bytes},
+        )
+
+        result = orch.create_video(cfg)
+
+        assert os.path.isfile(result["output_path"])
+        background_music_path = _patch_adapters["assemble_video"].call_args.kwargs["background_music"]
+        workspace_audio_dir = Path(tmp_output_dir) / sanitize_filename(cfg.title) / "audio"
+
+        assert background_music_path is not None
+        assert Path(background_music_path).parent == workspace_audio_dir
+        assert Path(background_music_path).exists()
+        assert Path(background_music_path).read_bytes() == audio_bytes
+
+    def test_background_music_invalid_path_raises(self, sample_images, tmp_output_dir):
+        orch = VideoOrchestrator(output_dir=tmp_output_dir)
+        cfg = VideoConfiguration(
+            title="Music Missing",
+            speech_content="This should fail because the music path is invalid.",
+            visual_assets=VisualAssetConfig(
+                asset_type=VisualAssetType.IMAGE_SEQUENCE,
+                images=sample_images,
+            ),
+            background_music="/does/not/exist.mp3",
+        )
+
+        with pytest.raises(FileNotFoundError, match="Background music not found"):
+            orch.create_video(cfg)
+
 
 class TestCustomOutputFormat:
     """Flow 5: Custom output format (.webm)."""
@@ -230,13 +301,16 @@ class TestImageModification:
             ),
             image_modification_instructions="Apply sepia filter",
         )
-        result = orch.create_video(cfg)
 
         mock_modify = _patch_adapters["modify_images"]
+        mock_modify.side_effect = _real_modify_images
+
+        with pytest.raises(NotImplementedError, match="image_modification_instructions is not yet implemented"):
+            orch.create_video(cfg)
+
         mock_modify.assert_called_once()
         _args, _kwargs = mock_modify.call_args
         assert _args[1] == "Apply sepia filter"
-        assert os.path.isfile(result["output_path"])
 
     def test_modify_images_not_called_without_instructions(self, sample_images, tmp_output_dir, _patch_adapters):
         orch = VideoOrchestrator(output_dir=tmp_output_dir)
@@ -333,3 +407,51 @@ class TestHorizontalOrientation:
         _, kwargs_asm = mock_assemble.call_args
         assert kwargs_asm.get("width") == 1920
         assert kwargs_asm.get("height") == 1080
+
+
+class TestSanitization:
+    """Ensure dangerous titles that could traverse directories are rejected."""
+
+    @pytest.mark.parametrize("bad_title", ["..", "../etc", "../../tmp", "..\\..\\windows"])
+    def test_reject_traversal_titles(self, bad_title, sample_images, tmp_output_dir):
+        orch = VideoOrchestrator(output_dir=tmp_output_dir)
+        cfg = VideoConfiguration(
+            title=bad_title,
+            speech_content="Testing unsafe title handling.",
+            visual_assets=VisualAssetConfig(
+                asset_type=VisualAssetType.IMAGE_SEQUENCE,
+                images=sample_images,
+            ),
+        )
+        with pytest.raises(ValueError, match="unsafe workspace"):
+            orch.create_video(cfg)
+
+    def test_save_uploaded_images_strips_path_components(self, tmp_output_dir):
+        orch = VideoOrchestrator(output_dir=tmp_output_dir)
+        bad_name = f"../../{uuid.uuid4().hex}.txt"
+        outside_path = os.path.abspath(os.path.join(tmp_output_dir, bad_name))
+        assert not os.path.exists(outside_path)
+
+        cfg = VideoConfiguration(
+            title="Uploaded Images",
+            speech_content="Testing upload path sanitization.",
+            visual_assets=VisualAssetConfig(
+                asset_type=VisualAssetType.IMAGE_SEQUENCE,
+                uploaded_images={bad_name: b"evil content"},
+            ),
+        )
+
+        result = orch.create_video(cfg)
+        assert os.path.isfile(result["output_path"])
+        assert not os.path.exists(outside_path)
+
+        expected_name = sanitize_filename_preserve_extension(os.path.basename(bad_name))
+        saved_visual = os.path.join(
+            tmp_output_dir,
+            "Uploaded_Images",
+            "visuals",
+            "cached",
+            expected_name,
+        )
+        assert os.path.exists(saved_visual)
+        assert not os.path.exists(os.path.join(tmp_output_dir, expected_name))
