@@ -55,9 +55,5 @@ def subtitles() -> Dict[str, Any]:
     return load().get("subtitles", {})
 
 
-def lingo() -> Dict[str, Any]:
-    return load().get("lingo", {})
-
-
 def pollinations() -> Dict[str, Any]:
     return load().get("pollinations", {})

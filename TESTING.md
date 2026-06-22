@@ -90,6 +90,12 @@ Tests in `tests/` create actual videos with mocked TTS/image generation but real
 - **Image modification** — verifies instruction string handling
 - **Subtitle renderer** — frame size, descender pixel check, text wrapping, empty text
 
+Note: Lingo_PERSONAS vendor-specific integration tests are skipped by default. To run
+those tests and exercises that import the vendored code, set the environment
+variable `USE_LINGO` to a truthy value (``1``, ``true``, ``yes``) and ensure
+`LINGO_ROOT` is set if the vendor files live outside `vendor/`. The main test
+suite remains fully runnable and offline without enabling legacy Lingo support.
+
 ### Creating New Integration Tests
 
 **Strategy:** Create a small test video (5-10 seconds) using a specific configuration, then validate the output exists and is playable.
@@ -110,8 +116,8 @@ def test_create_video_spanish_horizontal_subtitles(tmp_path):
         language=Language.SPANISH,
         speech_content="Hola mundo. Esta es una prueba.",
         visual_assets=VisualAssetConfig(
-            asset_type=VisualAssetType.LOCAL_IMAGES,
-            file_paths=[...],  # use test fixture images
+            asset_type=VisualAssetType.IMAGE_SEQUENCE,
+            images=[...],  # use test fixture images
         ),
         subtitles_enabled=True,
         orientation=Orientation.HORIZONTAL,
@@ -262,11 +268,11 @@ def gen_img(p, o):
     """Generate image."""
     # TODO: implement proper error handling
     cfg = config_loader.image()
-    # check if picsum is enabled
-    if cfg.get("use_picsum"):  # dead code
-        return _picsum_batch(p, o)
+    # explicit engine override: Picsum is only used when `engine="picsum"` is requested
+    if engine == "picsum":
+        return _picsum_batch(prompts, output_dir)
     # try lingo
-    return _try_footage_generator(p, o)  # no logging
+    return _try_footage_generator(prompts, output_dir)  # no logging
 ```
 
 ✅ **After (clean code):**
@@ -317,7 +323,7 @@ def generate_from_prompts(
 
 ## 5. Dead Code Detection
 
-Dead code accumulates over time and creates maintenance burden and confusion (as seen with `shorts_ui.py` and `image.use_picsum`). This section provides systematic checks to identify and remove unused code.
+Dead code accumulates over time and creates maintenance burden and confusion (as seen with `shorts_ui.py` and legacy `use_picsum` fallback logic). This section provides systematic checks to identify and remove unused code.
 
 ### File Usage Audit
 

@@ -15,10 +15,13 @@ El corazón del sistema es el orchestrator.py , que coordina un pipeline de 5 pa
 - orchestrator.py : La clase VideoOrchestrator gestiona el ciclo de vida de la creación del video y el manejo de directorios de trabajo (workspaces).
 - tts_adapter.py : Utiliza principalmente edge-tts para generar audio de alta calidad de forma gratuita, con soporte para múltiples idiomas.
 - image_adapter.py : Implementa una estrategia de "fallback" para imágenes:
-  - Primero intenta con Picsum (usando palabras clave del prompt como semilla para consistencia).
-  - Luego con el motor Lingo_PERSONAS (FootageGeneratorV2).
-  - Finalmente, crea placeholders con Pillow si lo anterior falla.
-- subtitle_renderer.py : Un componente especializado que quema (burn-in) subtítulos en el video usando Pillow y MoviePy. Está diseñado para evitar el recorte de letras descendentes (como 'g', 'p', 'y') que ocurre en otros renderizadores.
+- image_adapter.py : Implementa una estrategia de "fallback" para imágenes:
+  - Cuando el operador habilita el soporte legado (`USE_LINGO`), intenta usar
+    Lingo_PERSONAS (FootageGeneratorV2) como una opción más; de lo contrario
+    utiliza proveedores nativos (Cloudflare, SiliconFlow, Pollinations, HF).
+  - Picsum se usa solo cuando `engine="picsum"` se solicita explícitamente.
+  - Finalmente, crea placeholders con Pillow si el motor Lingo no está disponible.
+- subtitle_renderer.py : Un componente especializado que quema (burn-in) subtítulos en el video usando ffmpeg/ASS para mayor precisión. El renderizado de muestra con Pillow se mantiene solo como helper de pruebas, no como flujo de producción.
 - assembler_adapter.py : Utiliza el backend LingoAssemblerBackend para ensamblar el video, o cae en una implementación local de moviepy si el motor externo no está disponible.
 ### Interfaces de Usuario
 El proyecto ofrece dos formas principales de interacción:

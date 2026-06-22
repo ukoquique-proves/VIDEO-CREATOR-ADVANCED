@@ -9,9 +9,9 @@ Requires API key.
 import time
 import requests
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 
-from .base import ImageProvider, ProviderResult, ProviderStatus
+from src.image_providers.base import ImageProvider, ProviderResult, ProviderStatus
 
 
 class SiliconFlowProvider(ImageProvider):
@@ -28,7 +28,7 @@ class SiliconFlowProvider(ImageProvider):
     
     API_URL = "https://api.siliconflow.cn/v1/images/generations"
     
-    def __init__(self, api_key: str = None, config: dict = None):
+    def __init__(self, api_key: Optional[str] = None, config: Optional[Dict[str, Any]] = None):
         super().__init__("siliconflow", config)
         self.api_key = api_key or (config.get('api_key') if config else None)
         self.timeout = config.get('timeout', 60) if config else 60
@@ -43,7 +43,7 @@ class SiliconFlowProvider(ImageProvider):
         return self.check_rate_limit_status()
     
     def generate(self, prompt: str, width: int = 1080, height: int = 1920,
-                 output_dir: str = "output/shorts/footage/generated",
+                 output_dir: str = "output/generated",
                  **kwargs) -> ProviderResult:
         """Generate image using SiliconFlow."""
         if not self.is_available():
@@ -62,13 +62,7 @@ class SiliconFlowProvider(ImageProvider):
             "Content-Type": "application/json"
         }
         
-        # Determine image_size format expected by SiliconFlow (e.g. 1024x1024, 768x1024)
-        # FLUX.1-schnell generally expects standard dimensions or multiples of 32
-        # Let's map standard shorts sizes to nearest supported sizes if necessary,
-        # but 1024x1024 is safe. For 9:16, 576x1024 or 768x1024 might be supported.
-        # According to standard SiliconFlow API docs:
         image_size_str = f"{width}x{height}"
-        # Some models only support specific resolutions. FLUX is quite flexible.
         
         payload = {
             "model": self.model,
@@ -98,7 +92,7 @@ class SiliconFlowProvider(ImageProvider):
                             # Download the image
                             img_response = requests.get(image_url, timeout=30)
                             if img_response.status_code == 200:
-                                filename = f"siliconflow_{int(time.time())}.png"
+                                filename = f"siliconflow_{int(time.time())}_{hash(prompt) % 10000}.png"
                                 file_path = output_path / filename
                                 
                                 with open(file_path, 'wb') as f:
@@ -151,20 +145,19 @@ class SiliconFlowProvider(ImageProvider):
                     error_message="Request timeout",
                     provider_name=self.name
                 )
-                
-            except Exception as e:
+            except Exception as exc:
                 self.mark_error()
                 if attempt < self.max_retries - 1:
                     time.sleep(self.retry_delay)
                     continue
                 return ProviderResult(
                     success=False,
-                    error_message=str(e),
+                    error_message=str(exc),
                     provider_name=self.name
                 )
         
         return ProviderResult(
             success=False,
-            error_message="All retries failed",
+            error_message="Failed after retries",
             provider_name=self.name
         )

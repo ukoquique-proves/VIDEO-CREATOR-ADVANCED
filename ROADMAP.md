@@ -21,21 +21,22 @@
 - [x] **TTS Speaking Rate Control**: Support adjustable speech rate (e.g., `-10%`) via `tts.rate` in config.
 - [ ] Test with long-form speech content (> 5 minutes)
 
-## Phase 3: AI Image Generation
-- [x] Integrate Pollinations provider for real AI image generation — live via Lingo_PERSONAS `FootageGeneratorV2` + `PollinationsProvider`
-- [x] Add HuggingFace Flux/SDXL provider with automatic failover — `HuggingFaceFluxProvider` + `HuggingFaceSDProvider` + Picsum fallback already in Lingo's provider architecture
-- [x] Support image style presets (photorealistic, cinematic, artistic, cartoon) — `style` param flows through `generate_images_batch` → `ProviderManager` → each provider
-- [ ] **Refactor Provider Chain** (see `image_provider_refactor_plan.md` and `TANDA_6_REVIEW.md` for additional architectural candidates):
-  - Remove Picsum from default provider chain
-  - Add `preferred_engine` parameter to `provider_manager.create_default_manager()`
-  - Thread `engine` parameter through `FootageGeneratorV2` → `src/image_adapter.py`
-  - Keep Pollinations as the final free-tier fallback in the orchestrated sequence
+## Phase 3: AI Image Generation ✅
+- [x] Integrate Pollinations provider for real AI image generation — live via native `src/image_providers`
+- [x] Add HuggingFace Flux/SDXL provider with automatic failover — `HuggingFaceFluxProvider` + `HuggingFaceSDProvider`
+- [x] Support image style presets (photorealistic, cinematic, artistic, cartoon) — `style` param flows through `ProviderManager`
+- [x] **Refactor Provider Chain**:
+  - Moved all image providers from `Lingo_PERSONAS` to native `src/image_providers`
+  - Implemented `ProviderManager` with automatic failover and status tracking
+  - Removed brittle `importlib` hacks in `src/image_adapter.py`
+  - Integrated Cloudflare, SiliconFlow, Pollinations, HuggingFace, and Picsum as native providers
 - [ ] Implement image modification via img2img (SDXL or similar)
 - [ ] Add image caching and deduplication
 
-## Phase 4: Advanced Video Features
+## Phase 4: Advanced Video Features ✅
 - [x] Own subtitle burn-in with correct descender rendering, independent of Lingo — `_burn_subtitles` + `_render_subtitle_frame` use `font.getmetrics()` (ascent + descent) instead of `textbbox`; Lingo always receives `add_captions=False` to prevent double rendering and bypass its clipping bug
 - [x] Dynamic orientation support (Vertical 9:16 and Horizontal 16:9) and dimension resolution
+- [x] **Complete Video Assembly Decoupling**: Implemented a native MoviePy assembler as the default backend; Lingo is now only an optional legacy fallback
 - [ ] **Scene-based Precision Mode**: Implement `VideoScene` model for granular speech-to-visual synchronization (per-scene TTS and timing). Reference: `TANDA_3/VideoCreation-06-FALLIDO-MODO_ESCENAS`
 - [ ] Whisper-based forced subtitle alignment (replace word-rate estimation)
 - [ ] Ken Burns effect on images (pan + zoom animations)
@@ -63,8 +64,8 @@
 - [ ] Comprehensive error handling and retry logic
 - [ ] Structured logging with configurable log levels
 - [x] Resource cleanup (moviepy clip and audio handles closed after assembly)
-- [ ] Add an input-relocation architecture review and implementation plan (`INPUT_FIXING.md`)
-- [ ] Add an urgent media input fix checklist and reference file (`TO_FIX.md`)
+- [x] Add an input-relocation architecture review and implementation plan (`INPUT_FIXING.md`)
+- [x] Add an urgent media input fix checklist and reference file (`TO_FIX.md`)
 - [ ] GPU-accelerated encoding (h264_nvenc)
 - [ ] Docker containerization
 - [ ] CI/CD pipeline with automated testing

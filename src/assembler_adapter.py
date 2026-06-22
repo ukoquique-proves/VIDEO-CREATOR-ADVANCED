@@ -1,8 +1,8 @@
-"""
-Assembler Adapter — video assembly bridge to Lingo_PERSONAS VideoAssembler.
 
-Falls back to a pure-moviepy local assembly if the Lingo_PERSONAS import
-is unavailable.
+"""
+Assembler Adapter — native video assembly bridge.
+
+Uses a pure-moviepy local implementation.
 
 Subtitle burn-in is handled by the orchestrator as a separate post-processing
 step; this adapter is responsible only for assembling audio and visuals.
@@ -14,7 +14,7 @@ from typing import List, Optional
 
 from src import config_loader
 from src.backends import AssemblerBackend
-from src.backends.lingo_assembler_backend import LingoAssemblerBackend
+from src.backends.native_assembler_backend import NativeAssemblerBackend
 from src.utils import sanitize_filename, is_video_file
 
 logger = logging.getLogger(__name__)
@@ -26,32 +26,14 @@ _default_backend_cache: Optional[AssemblerBackend] = None
 def _get_default_backend() -> AssemblerBackend:
     """Get or lazily initialize the default assembler backend.
 
-    This function implements lazy initialization so that the potentially heavy
-    LingoAssemblerBackend is not instantiated until it's actually needed.
-    Once created, the backend instance is cached for reuse across calls.
-
-    Returns
-    -------
-    AssemblerBackend
-        The default backend instance (LingoAssemblerBackend).
+    This function implements lazy initialization so that heavy backends
+    are not instantiated until needed. The native MoviePy backend
+    is the default and sole implementation.
     """
     global _default_backend_cache
     if _default_backend_cache is None:
-        logger.debug("Lazily initializing default assembler backend (prefer Lingo, fallback to native)")
-        try:
-            import importlib.util
-
-            if importlib.util.find_spec("shorts_creator.video_assembler") or importlib.util.find_spec("shorts_creator"):
-                _default_backend_cache = LingoAssemblerBackend()
-            else:
-                from src.backends.native_assembler_backend import NativeAssemblerBackend
-
-                _default_backend_cache = NativeAssemblerBackend()
-        except Exception:
-            # If anything goes wrong while selecting backends, fall back to native.
-            from src.backends.native_assembler_backend import NativeAssemblerBackend
-
-            _default_backend_cache = NativeAssemblerBackend()
+        logger.debug("Lazily initializing default assembler backend (native MoviePy)")
+        _default_backend_cache = NativeAssemblerBackend()
     return _default_backend_cache
 
 
@@ -86,8 +68,7 @@ def assemble_video(
         across the subtitle and assembly paths.
     backend:
         Assembler backend to use. Defaults to the lazily-initialized
-        ``LingoAssemblerBackend`` (via ``_get_default_backend()``). Pass an alternative
-        to swap Lingo for another provider or to inject a mock in tests.
+        ``NativeAssemblerBackend``. Pass an alternative to inject a mock in tests.
 
     Returns
     -------
@@ -112,34 +93,17 @@ def assemble_video(
         background_music=background_music,
         width=width,
         height=height,
+        duration=duration,
     )
+
     if path is None:
-        logger.warning("Lingo assembler unavailable; falling back to local moviepy assembly.")
-        try:
-            path = _local_moviepy_assemble(
-                audio_path=audio_path,
-                visual_files=visual_files,
-                output_dir=output_dir,
-                output_filename=output_filename,
-                width=width,
-                height=height,
-                duration=duration,
-                background_music=background_music,
-            )
-        except RuntimeError as exc:
-            # If moviepy is not available and background music was requested, raise
-            # a clear error rather than silently dropping the music.
-            if background_music:
-                raise RuntimeError(
-                    "Background music was requested but the Lingo assembler is unavailable. "
-                    "Local moviepy fallback cannot preserve background music, so assembly cannot proceed."
-                ) from exc
-            raise
+        raise RuntimeError("Video assembly failed to produce an output.")
 
     return path
 
+
 # ---------------------------------------------------------------------------
-# Local moviepy fallback  (audio + visuals only — no captions)
+# Local moviepy implementation (audio + visuals only — no captions)
 # ---------------------------------------------------------------------------
 
 def _local_moviepy_assemble(
@@ -152,16 +116,14 @@ def _local_moviepy_assemble(
     duration: Optional[float] = None,
     background_music: Optional[str] = None,
 ) -> str:
-    """Assemble video using moviepy directly (no Lingo dependency).
+    """Assemble video using moviepy directly (no external dependencies).
 
     ``visual_files`` may freely mix still images and short video clips —
     each entry is dispatched to ``ImageClip`` or ``VideoFileClip`` based on
     its extension (see ``src.utils.is_video_file``). Video clips are
     trimmed (if longer than their allotted slot) or looped (if shorter) to
-    exactly fill it, mirroring the behavior of the optional Lingo assembler
-    backend. Any audio embedded in a video clip is stripped — the narration
-    track passed in as ``audio_path`` is always the sole audio source, same
-    as the Lingo backend.
+    exactly fill it. Any audio embedded in a video clip is stripped — the narration
+    track passed in as ``audio_path`` is always the sole audio source.
 
     Produces a video without subtitles; subtitle burn-in is handled by
     ``subtitle_renderer.burn_subtitles``.
@@ -178,11 +140,11 @@ def _local_moviepy_assemble(
         from moviepy.video.fx import Resize, Crop
     except ImportError as exc:
         raise RuntimeError(
-            f"moviepy is required for local video assembly but could not be imported: {exc}. "
+            f"moviepy is required for video assembly but could not be imported: {exc}. "
             "Ensure moviepy==2.1.2 is installed."
         ) from exc
 
-    logger.info("Local moviepy assembly: %d visuals + audio", len(visual_files))
+    logger.info("Native MoviePy assembly: %d visuals + audio", len(visual_files))
 
     output_path = os.path.join(output_dir, output_filename)
     audio = AudioFileClip(audio_path)
@@ -256,7 +218,7 @@ def _local_moviepy_assemble(
             except Exception:
                 pass
 
-    logger.info("Local assembly complete → %s", output_path)
+    logger.info("Native assembly complete → %s", output_path)
     return output_path
 
 
@@ -317,3 +279,4 @@ def _fit_to_frame(clip, width: int, height: int, *, Resize, Crop):
     rw, rh = clip.size
     clip = clip.with_effects([Crop(width=width, height=height, x_center=rw // 2, y_center=rh // 2)])
     return clip
+

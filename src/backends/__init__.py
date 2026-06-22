@@ -1,7 +1,4 @@
-"""
-Backend protocols — stable interfaces between adapters and concrete
-implementations (Lingo, ffmpeg, future alternatives).
-"""
+"""Backend protocols — stable interfaces between adapters and concrete implementations (ffmpeg, moviepy, future alternatives)."""
 
 from typing import Dict, List, Optional, Protocol, runtime_checkable
 

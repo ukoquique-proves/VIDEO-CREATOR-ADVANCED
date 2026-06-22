@@ -1,8 +1,9 @@
 """
-TTS Adapter — Text-to-Speech bridge to Lingo_PERSONAS.
+TTS Adapter — Text-to-Speech bridge.
 
 Supports:
-  - edge_tts (free, no API key) via Lingo_PERSONAS backend
+  - edge_tts (free, no API key)
+  - openai (requires API key)
   - ffmpeg silent-audio fallback for testing / offline use
 """
 

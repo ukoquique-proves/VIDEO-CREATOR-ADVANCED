@@ -10,8 +10,9 @@ import time
 import base64
 import requests
 from pathlib import Path
+from typing import Optional, Dict, Any
 
-from .base import ImageProvider, ProviderResult, ProviderStatus
+from src.image_providers.base import ImageProvider, ProviderResult, ProviderStatus
 
 
 class CloudflareProvider(ImageProvider):
@@ -30,7 +31,7 @@ class CloudflareProvider(ImageProvider):
 
     MODEL = "@cf/black-forest-labs/flux-1-schnell"
 
-    def __init__(self, account_id: str = None, api_token: str = None, config: dict = None):
+    def __init__(self, account_id: Optional[str] = None, api_token: Optional[str] = None, config: Optional[Dict[str, Any]] = None):
         super().__init__("cloudflare", config)
         self.account_id = account_id or (config.get('account_id') if config else None)
         self.api_token = api_token or (config.get('api_token') if config else None)
@@ -53,7 +54,7 @@ class CloudflareProvider(ImageProvider):
         return self.check_rate_limit_status()
 
     def generate(self, prompt: str, width: int = 1080, height: int = 1920,
-                 output_dir: str = "output/shorts/footage/generated",
+                 output_dir: str = "output/generated",
                  **kwargs) -> ProviderResult:
         """Generate image using Cloudflare Workers AI (FLUX.1-schnell)."""
         if not self.is_available():
@@ -92,7 +93,7 @@ class CloudflareProvider(ImageProvider):
                         if data.get("success") and "result" in data:
                             image_b64 = data["result"].get("image")
                             if image_b64:
-                                filename = f"cloudflare_{int(time.time())}.png"
+                                filename = f"cloudflare_{int(time.time())}_{hash(prompt) % 10000}.png"
                                 file_path = output_path / filename
                                 with open(file_path, "wb") as f:
                                     f.write(base64.b64decode(image_b64))
@@ -109,7 +110,7 @@ class CloudflareProvider(ImageProvider):
                         )
                     else:
                         # Raw binary response
-                        filename = f"cloudflare_{int(time.time())}.png"
+                        filename = f"cloudflare_{int(time.time())}_{hash(prompt) % 10000}.png"
                         file_path = output_path / filename
                         with open(file_path, "wb") as f:
                             f.write(response.content)
@@ -151,20 +152,19 @@ class CloudflareProvider(ImageProvider):
                     error_message="Request timeout",
                     provider_name=self.name
                 )
-
-            except Exception as e:
+            except Exception as exc:
                 self.mark_error()
                 if attempt < self.max_retries - 1:
                     time.sleep(self.retry_delay)
                     continue
                 return ProviderResult(
                     success=False,
-                    error_message=str(e),
+                    error_message=str(exc),
                     provider_name=self.name
                 )
 
         return ProviderResult(
             success=False,
-            error_message="All retries failed",
+            error_message="Failed after retries",
             provider_name=self.name
         )

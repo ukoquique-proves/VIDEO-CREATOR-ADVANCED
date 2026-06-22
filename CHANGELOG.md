@@ -11,16 +11,10 @@
 - `src/assembler_adapter.py` — local moviepy fallback dispatches visual assets by extension, using `VideoFileClip` for video files (stripping embedded audio) and `ImageClip` for images; clips are trimmed or looped to fill assigned durations.
 - `src/orchestrator.py` — when `background_music` is provided, the source file is copied into `workspace/audio` and the workspace-local copy is used for assembly; invalid paths raise `FileNotFoundError` before video assembly starts.
 - `src/utils.py` — added `sanitize_filename_preserve_extension()` so uploaded filenames remain filesystem-safe while retaining their original extension (e.g. `.mp3`, `.png`, `.mp4`).
-- `src/video_gateway.py` — added `VideoGateway` dataclass for dependency injection, enabling `VideoOrchestrator` to accept swappable TTS/image/assembler callables.
-- `src/orchestrator.py` — updated pipeline construction to accept an injected gateway and prefer gateway-provided callables for TTS, image generation/copy, image modification, and assembly.
-- `src/assembler_adapter.py` — default backend selection now prefers a Lingo assembler when available and otherwise uses a native moviepy backend; local fallback now supports mixing `background_music` with narration.
-- `src/backends/native_assembler_backend.py` — new native assembler backend wrappers local moviepy assembly behind the `AssemblerBackend` protocol.
-- `tests/test_video_gateway.py` — added regression coverage for gateway-based orchestrator injection.
-- `tests/test_assembler_local_mix.py` — added regression coverage for local fallback assembly with background music.
-- `src/orchestrator.py` — `create_video()` complexity reduced by extracting private step methods (`_run_tts_audio`, `_resolve_dimensions_and_orientation`, `_prepare_visuals_with_modifications`, `_generate_subtitle_segments`, `_prepare_background_music`, `_assemble_and_burn_video`, `_cleanup_workspace`) for improved readability and testability.
-- `src/orchestrator.py` / `src/assembler_adapter.py` — consolidated audio duration resolution into `_resolve_total_duration()` and threaded the resulting `duration` through subtitle generation and assembly to ensure consistent timing across paths.
-- Repository hygiene: updated `.gitignore` and added `.gitattributes` to exclude generated `output/`, `tmp_real/`, `test_out/`, caches and media files from VCS and `git archive` exports; removed stray tracked test artifact `test_cf_out.png`.
-- Backend initialization: defers heavy backend instantiation (Lingo assembler and FFmpeg subtitle backend) until actually needed and preserves test patchability (`src/assembler_adapter.py` `_get_default_backend()`, `src/orchestrator.py` lazy `FFmpegSubtitleBackend` import).
+ - `src/orchestrator.py` — `create_video()` complexity reduced by extracting private step methods (`_run_tts_audio`, `_resolve_dimensions_and_orientation`, `_prepare_visuals_with_modifications`, `_generate_subtitle_segments`, `_prepare_background_music`, `_assemble_and_burn_video`, `_cleanup_workspace`) for improved readability and testability.
+ - `src/orchestrator.py` / `src/assembler_adapter.py` — consolidated audio duration resolution into `_resolve_total_duration()` and threaded the resulting `duration` through subtitle generation and assembly to ensure consistent timing across paths.
+ - Repository hygiene: updated `.gitignore` and added `.gitattributes` to exclude generated `output/`, `tmp_real/`, `test_out/`, caches and media files from VCS and `git archive` exports; removed stray tracked test artifact `test_cf_out.png`.
+ - Backend initialization: defers heavy backend instantiation (Lingo assembler and FFmpeg subtitle backend) until actually needed and preserves test patchability (`src/assembler_adapter.py` `_get_default_backend()`, `src/orchestrator.py` lazy `FFmpegSubtitleBackend` import).
 
 ### Fixed
 - `src/assembler_adapter.py` — import `is_video_file` from `src.utils` so the local moviepy fallback does not raise `NameError` when invoked; this fixes a crash when assembling mixed image/video visual assets without the Lingo assembler available.
@@ -42,13 +36,13 @@
 - `ROADMAP.md` — Phase 3 "Refactor Provider Chain" item now references `TANDA_6_REVIEW.md` alongside `image_provider_refactor_plan.md` for additional architectural guidance.
 - `src/orchestrator.py` — subtitle burn-in is now delegated to an injected `SubtitleBackend` instance (`FFmpegSubtitleBackend` by default) instead of calling `subtitle_renderer` directly; enables backend substitution in tests via constructor injection.
 - `src/orchestrator.py` — audio duration measurement for subtitle scaling now tries `ffprobe` first, then falls back to `moviepy.AudioFileClip` only if needed.
-- `src/image_adapter.py` — `modify_images()` now warns and returns existing visuals when image modification is not yet implemented, instead of raising `NotImplementedError`; the pipeline continues uninterrupted.
-- `src/assembler_adapter.py` — when background music is requested but the Lingo assembler is unavailable, the adapter now preserves the uploaded music via the native MoviePy fallback by mixing it with narration using MoviePy v2 audio effects.
+- `src/image_adapter.py` — image modification is still not implemented; `modify_images()` raises `NotImplementedError` when called with `image_modification_instructions`.
+- `src/assembler_adapter.py` — when background music is requested but the Lingo assembler is unavailable, the adapter now raises a clear `RuntimeError` instead of silently producing a music-free video via local fallback.
 - `src/subtitle_renderer.py` — ASS subtitle wrapping now logs a warning when a segment is wrapped into more than two lines and truncated to two lines, preventing invisible subtitle loss without notice.
 - `config/default_config.yaml` — `subtitles.font_size` increased from 28 to 56 for better on-screen readability.
 
 ### Tests
-- `tests/test_adapters.py` — `test_modify_images_raises_not_implemented` renamed back to `test_modify_images_logs_warning_and_skips` and updated to assert a warning is logged and the original paths are returned unchanged (reverts the `NotImplementedError` assertion from 0.2.0).
+- `tests/test_adapters.py` — added `test_modify_images_raises_not_implemented` to assert `NotImplementedError` is raised when `image_modification_instructions` is requested.
 - `tests/test_orchestrator.py` — `_patch_adapters` fixture now mocks `FFmpegSubtitleBackend` with `_MockSubtitleBackend` to assert subtitle burn-in call counts without exercising ffmpeg; `TestSubtitleBurnIn` tests updated accordingly.
 
 ## [0.3.0] - 2026-06-08
@@ -111,11 +105,11 @@
 - `src/schema.py` — added `PICSUM`, `UNSPLASH`, and `PEXELS` to `ImageEngine` enum to prepare for UI provider dropdowns
 - `src/image_adapter.py` — added `_picsum_batch()` fallback function that fetches deterministic stock images from picsum.photos using prompt-keyword-derived seeds
 - `config/demo_picsum.yaml` — new example configuration file demonstrating the Picsum fallback
-- `config/default_config.yaml` — added `use_picsum` boolean flag to the `image` block (defaulting to `true`) to allow disabling the network-dependent Picsum fallback offline
+- `config/default_config.yaml` — image engine is selected by `image.engine`; explicit engine overrides now flow through `generate_from_prompts()` and control whether Picsum is used.
 
 ### Fixed
 - `src/assembler_adapter.py` — `_local_moviepy_assemble()` now properly crop-to-fills visual assets that don't match the target aspect ratio, eliminating letterboxing and pillarboxing
-- `src/image_adapter.py` — `generate_from_prompts()` routing logic now respects an explicitly passed `engine` parameter (e.g. `engine="pollinations"` skips Picsum entirely); previously the routing only checked the global `use_picsum` config flag
+- `src/image_adapter.py` — `generate_from_prompts()` routing logic now respects an explicitly passed `engine` parameter (e.g. `engine="pollinations"` skips Picsum entirely); this avoids relying on legacy fallback flags
 - `src/subtitle_renderer.py` — `burn_subtitles()` now wraps `VideoFileClip` and `VideoClip` in `try/finally` blocks; `video.close()` and `composite.close()` are guaranteed to run even if an exception is raised mid-function, preventing file handle and ffmpeg subprocess leaks
 - `src/assembler_adapter.py` — `_local_moviepy_assemble()` now wraps clip operations in nested `try/finally` blocks; `audio.close()` and `video.close()` are guaranteed to run on exception, preventing resource leaks when multiple videos are generated in a session
 - `src/config_loader.py` — `load()` now catches `FileNotFoundError` and re-raises with the full resolved path to `default_config.yaml` and a hint to check the project root; previously a missing config would surface as a bare `FileNotFoundError` with no context

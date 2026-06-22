@@ -1,10 +1,33 @@
 # ======================================================================
-# Generated Outputs & Artifacts
+# 1. .files (Dotfiles & Dot-directories)
 # ======================================================================
+.*
+!.gitignore
+!.gitattributes
 
-# Video outputs and media files
+# ======================================================================
+# 2. Materiales to make videos (Audios, Images, Configs, Workspace)
+# ======================================================================
+workspace/
+videocreation-test.tar
+tmp_escenas_video.yaml
+*.mp3
+*.wav
+*.aac
+*.m4a
+*.ogg
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.tar
+*.zip
+
+# ======================================================================
+# 3. Resulting videos
+# ======================================================================
 output/
-tmp_real/
+tmp_output/
 test_out/
 temp_uploads/
 *.mp4
@@ -15,80 +38,8 @@ temp_uploads/
 *.flv
 *.m4v
 
-# Audio and temporary media
-*.mp3
-*.wav
-*.aac
-*.m4a
-*.ogg
-*TEMP_MPY*
-
 # ======================================================================
-# Python Build & Environment
+# Python compilation cache
 # ======================================================================
-
-# Byte-compiled / optimized / DLL files
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-*.egg
-*.egg-info/
-dist/
-build/
-
-# Testing & Coverage
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-.hypothesis/
-
-# Type checking
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Environments
-.venv/
-venv/
-ENV/
-env/
-.env
-.env.local
-.env.*.local
-
-# ======================================================================
-# Cache & Temporary Files
-# ======================================================================
-
-.cache/
 *.pyc
-.DS_Store
-*.swp
-*.swo
-*~
-.~*
-
-# IDEs & Editors
-.vscode/
-.idea/
-*.sublime-workspace
-*.sublime-project
-.emacs.d/
-.netrwhist
-
-# OS-specific
-Thumbs.db
-.directory
-
-# ======================================================================
-# Project-Specific Artifacts
-# ======================================================================
-
-# Streamlit cache (can be regenerated)
-.streamlit/cache/
-
-# Downloaded or generated test files
-test_cf_out.png
-test_*.png

@@ -1,8 +1,8 @@
 # VideoCreation
 
-A configurable video generation pipeline that accepts user-defined content — speech text, visual assets, and styling options — and produces a complete video file.
+A fully decoupled, configurable video generation pipeline that accepts user-defined content — speech text, visual assets, and styling options — and produces a complete video file.
 
-Lingo_PERSONAS is an optional integration used for AI image generation and video assembly. TTS runs independently via edge_tts with no Lingo dependency.
+Lingo_PERSONAS is now completely optional and only available as a legacy fallback; all core functionality (AI image generation, TTS, subtitle rendering, and video assembly are implemented natively.
 
 ---
 
@@ -17,15 +17,10 @@ Lingo_PERSONAS is an optional integration used for AI image generation and video
 │  TTS     │  Image   │  Subtitle     │  Assembler            │
 │  Adapter │  Adapter │  Adapter      │  Adapter              │
 │          │          │               │                       │
-│ edge_tts │ Picsum · │ Word-rate     │ LingoAssembler        │
-│ (free,   │ FootageG │ estimation    │ backend               │
-│  no      │ enV2 ·   │               │ (moviepy              │
-│  Lingo)  │ Pillow   │               │  fallback)            │
+│ edge_tts │ Cloudflare/ │ Word-rate   │ Native MoviePy   │
+│ openai   │ Pollinations/  │ estimation  │ (fully decoupled) │
+│ (free)   │ Picsum        │             │                   │
 └──────────┴──────────┴───────────────┴───────────────────────┘
-                            │
-                  (optional)▼
-              Lingo_PERSONAS Engine
-          (Image providers · moviepy)
 ```
 
 ### Module Overview
@@ -34,16 +29,16 @@ Lingo_PERSONAS is an optional integration used for AI image generation and video
 |--------|---------|
 | `src/schema.py` | Pydantic models for `VideoConfiguration`, `TTSBackend`, `ImageEngine` |
 | `src/orchestrator.py` | Main pipeline: wires all adapters together |
-| `src/tts_adapter.py` | Text-to-speech (edge_tts + silent fallback) |
-| `src/image_adapter.py` | AI image generation (FootageGeneratorV2 + Pillow fallback) |
+| `src/tts_adapter.py` | Text-to-speech (edge_tts/openai — no Lingo dependency) |
+| `src/image_adapter.py` | AI image generation (native providers in src/image_providers/) |
+| `src/image_providers/` | Native AI image providers (Cloudflare Workers AI, Pollinations, Picsum, etc.) |
 | `src/subtitle_adapter.py` | Subtitle segment generation (word-rate model) |
 | `src/subtitle_renderer.py` | ffmpeg ASS-based subtitle burn-in (precise positioning, descender fix) |
 | `src/backends/__init__.py` | `AssemblerBackend` and `SubtitleBackend` protocol definitions |
-| `src/backends/ffmpeg_subtitle_backend.py` | `SubtitleBackend` wrapper for ffmpeg/ASS subtitle burn-in |
-| `src/assembler_adapter.py` | Final video assembly (LingoAssemblerBackend + moviepy fallback) |
-| `src/backends/lingo_assembler_backend.py` | Lingo_PERSONAS VideoAssembler encapsulated behind the backend interface |
+| `src/backends/native_assembler_backend.py` | Native MoviePy backend (default, fully decoupled) |
+| `src/assembler_adapter.py` | Final video assembly (native MoviePy, Lingo as optional fallback) |
+| `src/backends/lingo_assembler_backend.py` | Legacy Lingo_PERSONAS VideoAssembler wrapped as fallback |
 | `src/utils.py` | Shared pipeline utilities (filename sanitization, helpers) |
-| `src/lingo_utils.py` | Shared Lingo_PERSONAS path injection utility |
 | `src/config_loader.py` | Reads and caches `config/default_config.yaml` |
 | `src/ui.py` | Streamlit UI for interactive video generation |
 | `src/main.py` | CLI entry point supporting YAML/JSON execution |
@@ -94,7 +89,7 @@ python -m streamlit run src/ui.py
 The UI supports:
 - **Interactive Configuration**: Set titles, speech content, and orientation.
 - **Visual Asset Management**: Upload local images or video clips directly, or provide AI prompts. The UI accepts common image and video formats when "User Provided (Local Media)" is selected.
-- **Background Music Support**: Provide a local audio file path via `background_music`; the file is copied into the video workspace before assembly.
+- **Background Music Support**: Provide a local audio file path via `background_music`; the file is copied into the video workspace before assembly. Note: if the Lingo assembler is unavailable, local fallback cannot preserve background music and assembly may fail.
 - **Real-time Logs**: Monitor the generation progress directly in the browser.
 - **Video Preview**: Watch the generated video immediately after assembly.
 
@@ -132,8 +127,8 @@ print(f"Video saved: {result['output_path']}")
 | `speech_content` | str | *required* | Text converted to speech audio |
 | `visual_assets` | VisualAssetConfig | *required* | Images or AI prompts |
 | `length_seconds` | float \| None | None | Target duration in seconds (auto if None) |
-| `background_music` | str \| None | None | Path to background audio. The file is copied into `workspace/audio` before assembly. |
-| `image_modification_instructions` | str \| None | None | AI image editing instructions |
+| `background_music` | str \| None | None | Path to background audio. The file is copied into `workspace/audio` before assembly. If the Lingo assembler is unavailable, the local fallback may not support background music. |
+| `image_modification_instructions` | str \| None | None | AI image editing instructions (currently unimplemented; setting this raises NotImplementedError) |
 | `subtitles_enabled` | bool | False | Burn subtitles into the video |
 | `output_format` | OutputFormat | mp4 | `mp4`, `mov`, `avi`, or `webm` |
 | `orientation` | Orientation | `vertical` | `vertical` (9:16) or `horizontal` (16:9) |
@@ -141,6 +136,8 @@ print(f"Video saved: {result['output_path']}")
 | `tts_rate` | str \| None | None | Per-video speaking rate override (e.g. `"-10%"`, `"+5%"`) |
 | `image_engine` | ImageEngine \| None | None | Per-video image engine override (`cloudflare`, `siliconflow`, `huggingface`, `pollinations`, `picsum`) |
 | `image_style` | str \| None | None | Per-video image style override (e.g. `cinematic`, `photorealistic`) |
+
+> Note: `image_modification_instructions` is reserved for future use. The current implementation is not yet available and will raise `NotImplementedError` if provided.
 
 ### Environment Variables
 
@@ -154,6 +151,13 @@ HUGGINGFACE_API_KEY=your_key
 ```
 
 All keys are optional — the pipeline falls through to the next available provider automatically.
+
+To opt into the legacy Lingo_PERSONAS integration (only recommended for
+operators who know which Lingo version they intend to use), set the
+``USE_LINGO`` environment variable to a truthy value (``1``, ``true``,
+``yes``) and optionally set ``LINGO_ROOT`` to point at the Lingo root
+directory. When ``USE_LINGO`` is not set the project stays fully
+decoupled and will not inject vendor paths into ``sys.path``.
 
 ---
 

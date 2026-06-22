@@ -7,9 +7,16 @@ The project already relocates user-provided visual assets into the per-video wor
 - `src/image_adapter.py` copies local provided visual files into `workspace/visuals/cached` via `copy_provided_images()`.
 - `src/orchestrator.py` generates TTS from `speech_content` and writes it to `workspace/speech.mp3`.
 
+### Implementation status
+- [x] User-provided images and video clips are copied into the workspace
+- [x] `speech_content` is converted to `workspace/speech.mp3`
+- [x] Local `background_music` paths are copied into `workspace/audio`
+- [x] Uploaded background music bytes are saved into `workspace/audio`
+- [ ] Direct user-provided narration audio files are not supported yet
+
 This means images and video clips provided by the user are correctly moved into the video workspace.
 - Speech text is converted to `workspace/speech.mp3` and is already handled inside the workspace.
-- Background music is currently not copied into the workspace and requires the same treatment.
+- Background music is also relocated into `workspace/audio` when provided as an upload or a local file path.
 
 ## Branch-derived design notes from `VideoCreation-03-arch3`
 
@@ -25,14 +32,14 @@ These branch ideas reinforce the current fix plan: keep I/O boundary wiring at t
 
 ## Missing or incomplete input relocation
 
-The architecture does not consistently relocate user-provided audio/background music:
-- `VideoConfiguration.background_music` is accepted by the schema and passed through to the assembler.
-- There is no explicit copy of `background_music` into the video workspace before assembly.
-- The UI does not expose a file uploader or path entry for `background_music`, so user-provided audio is only supported via manual config changes.
+The architecture now relocates user-provided audio/background music into the workspace:
+- `VideoConfiguration.background_music` is accepted by the schema and copied into `workspace/audio` before assembly.
+- Uploaded background music is saved through the UI and also stored in `workspace/audio`.
+- The UI exposes both a local path input and a file uploader for background music.
 
-Also, there is no support for direct user-provided narration audio files (only speech text via TTS).
+There is still no support for direct user-provided narration audio files; speech is generated only from `speech_content` via TTS.
 
-This file now includes background music explicitly as a missing relocation path that must be fixed.
+This file now documents the completed workspace relocation architecture and notes remaining hardening opportunities.
 
 ## Fix plan
 
@@ -44,12 +51,12 @@ This file now includes background music explicitly as a missing relocation path 
 - Before assembly, rewrite `config.background_music` to point at the copied workspace audio path.
 - If a user-specified audio path does not exist or is invalid, raise a clear error before assembly.
 
-### 2. Extend schema and UI to support uploaded audio
+### 2. Schema and UI support for uploaded audio
 
-- Extend `VisualAssetConfig` or `VideoConfiguration` with an `uploaded_audio: Optional[Dict[str, bytes]]` field, or a dedicated `uploaded_background_music` field.
-- In `src/ui.py`, add a file uploader for background music when the user is creating video assets.
-- Save uploaded audio bytes to the new audio workspace directory during pipeline execution.
-- Add a UI warning if manual audio paths contain traversal segments or unsupported file types.
+- `VideoConfiguration` already includes `uploaded_background_music: Optional[Dict[str, bytes]]`.
+- `src/ui.py` already exposes a file uploader for background music and stores the uploaded bytes for pipeline use.
+- Uploaded audio bytes are saved to `workspace/audio` during video generation.
+- Remaining work: add stronger UI validation for unsupported file types and traversal-safe path handling.
 
 ### 3. Harden path safety and normalization
 
@@ -76,5 +83,5 @@ This file now includes background music explicitly as a missing relocation path 
 
 - Images and videos are already relocated into the per-video workspace.
 - Speech text is converted to speech audio inside the workspace.
-- Background music/audio path handling is not yet implemented as a full relocation workflow.
+- Background music/audio path handling is now implemented as a workspace relocation workflow.
 - `INPUT_FIXING.md` documents the exact fix plan needed to make all user-provided assets consistently relocated.

@@ -1,3 +1,4 @@
+
 """
 Unit tests for the adapter modules (tts, image, subtitle, assembler).
 """
@@ -108,11 +109,11 @@ class TestTTSAdapter:
 
 class TestImageAdapter:
     def test_generate_placeholder_images(self, tmp_path):
-        """Placeholder images should be created when Picsum and FootageGeneratorV2 are unavailable."""
+        """Placeholder images should be created when all providers are unavailable."""
         out_dir = str(tmp_path / "imgs")
         prompts = ["A cat", "A dog", "A bird"]
         with patch.object(image_adapter, "_picsum_batch", return_value=[]), \
-             patch.object(image_adapter, "_try_footage_generator", return_value=None):
+             patch.object(image_adapter, "_try_native_image_generation", return_value=None):
             paths = image_adapter.generate_from_prompts(prompts, out_dir)
         assert len(paths) == 3
         for p in paths:
@@ -139,34 +140,22 @@ class TestImageAdapter:
         with pytest.raises(NotImplementedError, match="image_modification_instructions is not yet implemented"):
             image_adapter.modify_images(sample_images, "brighten everything")
 
-    def test_engine_pollinations_skips_picsum(self, tmp_path):
-        """Passing engine='pollinations' should skip Picsum and use the requested provider."""
-        out_dir = str(tmp_path / "imgs")
-        with patch.object(image_adapter, "_picsum_batch", return_value=["fake.jpg"]) as mock_picsum, \
-             patch.object(image_adapter, "_try_footage_generator", return_value=["lingo.png"]) as mock_lingo:
-            paths = image_adapter.generate_from_prompts(["test"], out_dir, engine="pollinations")
-            
-        mock_picsum.assert_not_called()
-        mock_lingo.assert_called_once()
-        assert paths == ["lingo.png"]
-
     def test_engine_picsum_forces_picsum(self, tmp_path):
         """Passing engine='picsum' should force Picsum when explicitly requested."""
         out_dir = str(tmp_path / "imgs")
         with patch.object(image_adapter, "_picsum_batch", return_value=["fake.jpg"]) as mock_picsum, \
-             patch.object(image_adapter, "_try_footage_generator") as mock_lingo:
+             patch.object(image_adapter, "_try_native_image_generation") as mock_native:
             paths = image_adapter.generate_from_prompts(["test"], out_dir, engine="picsum")
             
         mock_picsum.assert_called_once()
-        mock_lingo.assert_not_called()
+        mock_native.assert_not_called()
         assert paths == ["fake.jpg"]
 
     def test_config_engine_defaults_to_config_value(self, tmp_path):
         """When no engine is passed explicitly, the default config engine should be used."""
         out_dir = str(tmp_path / "imgs")
         with patch("src.image_adapter.config_loader.image", return_value={"style": "photorealistic", "aspect_ratio": "9:16", "engine": "cloudflare"}), \
-             patch("src.image_adapter.ensure_lingo_on_path", return_value=None), \
-             patch("src.image_adapter._try_footage_generator", return_value=["cloudflare.png"]) as mock_try:
+             patch("src.image_adapter._try_native_image_generation", return_value=["cloudflare.png"]) as mock_try:
             paths = image_adapter.generate_from_prompts(["test"], out_dir)
 
         mock_try.assert_called_once()
@@ -219,6 +208,7 @@ class TestSubtitleAdapter:
             for seg in segments:
                 assert seg["text"].strip() != "", f"Empty segment from input {text!r}"
 
+
 # =========================================================================== #
 # Assembler Adapter — integration (mocked backends)
 # =========================================================================== #
@@ -249,7 +239,7 @@ class TestAssemblerAdapter:
         """Backend.assemble must never receive segments or subtitles_enabled."""
         from src import assembler_adapter
 
-        fake_video = str(tmp_path / "lingo.mp4")
+        fake_video = str(tmp_path / "local.mp4")
         open(fake_video, "w").close()
 
         mock_backend = MagicMock()
@@ -267,47 +257,23 @@ class TestAssemblerAdapter:
         assert "subtitles_enabled" not in kwargs
         assert "segments" not in kwargs
 
-    def test_local_fallback_used_when_lingo_unavailable(self, tmp_path):
-        """When the backend returns None, _local_moviepy_assemble must be called."""
+    def test_native_assembler_always_used(self, tmp_path):
+        """Native assembler is always called as the primary implementation."""
         from src import assembler_adapter
 
         fake_video = str(tmp_path / "local.mp4")
         open(fake_video, "w").close()
 
         mock_backend = MagicMock()
-        mock_backend.assemble.return_value = None
+        mock_backend.assemble.return_value = fake_video
 
-        with patch.object(assembler_adapter, "_local_moviepy_assemble", return_value=fake_video) as mock_local:
-            result = assembler_adapter.assemble_video(
-                audio_path="fake.mp3",
-                visual_files=["fake.png"],
-                output_dir=str(tmp_path),
-                backend=mock_backend,
-            )
+        result = assembler_adapter.assemble_video(
+            audio_path="fake.mp3",
+            visual_files=["fake.png"],
+            output_dir=str(tmp_path),
+            backend=mock_backend,
+        )
 
-        mock_local.assert_called_once()
-        assert result == fake_video
-
-    def test_background_music_requested_without_lingo_uses_local_fallback(self, tmp_path):
-        """Requested background music should fall back to local moviepy assembly."""
-        from src import assembler_adapter
-
-        mock_backend = MagicMock()
-        mock_backend.assemble.return_value = None
-
-        fake_video = str(tmp_path / "local_with_music.mp4")
-        open(fake_video, "w").close()
-
-        with patch.object(assembler_adapter, "_local_moviepy_assemble", return_value=fake_video) as mock_local:
-            result = assembler_adapter.assemble_video(
-                audio_path="fake.mp3",
-                visual_files=["fake.png"],
-                output_dir=str(tmp_path),
-                backend=mock_backend,
-                background_music="music.mp3",
-            )
-
-        mock_local.assert_called_once()
         assert result == fake_video
 
     def test_moviepy_import_error_raises_runtime_error(self, tmp_path):
@@ -320,15 +286,11 @@ class TestAssemblerAdapter:
             def __getattr__(self, name):
                 raise ImportError(f"moviepy is broken: {name}")
 
-        mock_backend = MagicMock()
-        mock_backend.assemble.return_value = None
-
         with patch.dict(sys.modules, {"moviepy": _BrokenMoviepy("moviepy"), "moviepy.video.fx": _BrokenMoviepy("moviepy.video.fx")}):
             with pytest.raises(RuntimeError, match="moviepy is required"):
                 assembler_adapter.assemble_video(
                     audio_path="fake.mp3",
                     visual_files=["fake.png"],
                     output_dir=str(tmp_path),
-                    backend=mock_backend,
                 )
 

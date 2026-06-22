@@ -64,7 +64,3 @@ subtitles:
 transitions:
   fade_duration: 0.5
   image_duration: 3.0
-
-## Lingo_PERSONAS
-lingo:
-  root: "./vendor/Lingo_PERSONAS"

@@ -1,35 +1,31 @@
+
 import os
-import wave
-from PIL import Image
 from src import assembler_adapter
 
 
-class DummyBackend:
-    def assemble(self, **kwargs):
-        # Simulate Lingo unavailable
-        return None
+def test_local_assembler_with_background_music(tmp_path, monkeypatch):
+    called = {}
 
+    def fake_local(*args, **kwargs):
+        # record that we were called and return a fake path
+        called['args'] = args
+        called['kwargs'] = kwargs
+        out = os.path.join(kwargs['output_dir'], kwargs['output_filename'])
+        with open(out, 'wb') as f:
+            f.write(b'mp4')
+        return out
 
-def _write_silence_wav(path, duration=1.0, fps=44100):
-    n_frames = int(duration * fps)
-    with wave.open(path, 'wb') as wav_file:
-        wav_file.setnchannels(1)
-        wav_file.setsampwidth(2)
-        wav_file.setframerate(fps)
-        wav_file.writeframes(b'\x00\x00' * n_frames)
+    # Patch the local assembler to avoid running moviepy in tests
+    monkeypatch.setattr(assembler_adapter, '_local_moviepy_assemble', fake_local)
 
-
-def test_local_fallback_with_background_music(tmp_path):
-    audio = tmp_path / "speech.wav"
-    _write_silence_wav(str(audio), duration=1.0)
-
+    audio = tmp_path / "speech.mp3"
+    audio.write_bytes(b'audio')
     visuals_dir = tmp_path / "visuals"
     visuals_dir.mkdir()
     img = visuals_dir / "img.png"
-    Image.new('RGB', (16, 16), color='blue').save(img)
-
-    bg = tmp_path / "bg.wav"
-    _write_silence_wav(str(bg), duration=2.0)
+    img.write_bytes(b'png')
+    bg = tmp_path / "bg.mp3"
+    bg.write_bytes(b'bg')
 
     out_dir = tmp_path / "out"
     out_dir.mkdir()
@@ -44,9 +40,10 @@ def test_local_fallback_with_background_music(tmp_path):
         width=480,
         height=640,
         duration=1.0,
-        backend=DummyBackend(),
     )
 
     assert path is not None
-    assert os.path.isfile(path)
-    assert path.endswith('.mp4')
+    assert os.path.exists(path)
+    assert 'kwargs' in called
+    assert called['kwargs']['background_music'] == str(bg)
+

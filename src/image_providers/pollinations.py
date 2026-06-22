@@ -9,9 +9,9 @@ import time
 import random
 import requests
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 
-from .base import ImageProvider, ProviderResult, ProviderStatus
+from src.image_providers.base import ImageProvider, ProviderResult, ProviderStatus
 
 
 class PollinationsProvider(ImageProvider):
@@ -30,7 +30,7 @@ class PollinationsProvider(ImageProvider):
     
     BASE_URL = "https://image.pollinations.ai/prompt/"
     
-    def __init__(self, config: dict = None):
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
         super().__init__("pollinations", config)
         self.timeout = config.get('timeout', 60) if config else 60
         self.max_retries = config.get('max_retries', 2) if config else 2
@@ -41,7 +41,7 @@ class PollinationsProvider(ImageProvider):
         return self.check_rate_limit_status()
     
     def generate(self, prompt: str, width: int = 1080, height: int = 1920,
-                 output_dir: str = "output/shorts/footage/generated",
+                 output_dir: str = "output/generated",
                  **kwargs) -> ProviderResult:
         """
         Generate image using Pollinations.ai.

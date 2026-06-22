@@ -3,6 +3,7 @@ Base interface for AI image generation providers.
 Decoupled architecture allowing multiple providers with automatic failover.
 """
 
+import time
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
@@ -87,6 +88,3 @@ class ImageProvider(ABC):
                 self.rate_limit_reset_time = None
                 return True
         return self.status == ProviderStatus.AVAILABLE
-
-
-import time

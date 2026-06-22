@@ -1,9 +1,16 @@
+"""
+Picsum Image Provider
+
+Fallback provider using Lorem Picsum to guarantee image generation success.
+Useful for testing or when AI providers fail.
+"""
+
 import time
 import requests
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 
-from .base import ImageProvider, ProviderResult, ProviderStatus
+from src.image_providers.base import ImageProvider, ProviderResult, ProviderStatus
 
 class PicsumProvider(ImageProvider):
     """
@@ -12,7 +19,7 @@ class PicsumProvider(ImageProvider):
     
     BASE_URL = "https://picsum.photos/"
     
-    def __init__(self, config: dict = None):
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
         super().__init__("picsum", config)
         self.timeout = config.get('timeout', 30) if config else 30
         
@@ -21,7 +28,7 @@ class PicsumProvider(ImageProvider):
         return self.check_rate_limit_status()
         
     def generate(self, prompt: str, width: int = 1080, height: int = 1920,
-                 output_dir: str = "output/shorts/footage/generated",
+                 output_dir: str = "output/generated",
                  **kwargs) -> ProviderResult:
         """
         Fetch a random image from Picsum.
@@ -32,12 +39,15 @@ class PicsumProvider(ImageProvider):
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
         
-        url = f"{self.BASE_URL}{width}/{height}"
+        # Use a seed to ensure some variety but consistency if needed
+        # URL format: https://picsum.photos/seed/{seed}/{width}/{height}
+        seed = hash(prompt) % 10000
+        url = f"{self.BASE_URL}seed/{seed}/{width}/{height}"
         
         try:
             response = requests.get(url, timeout=self.timeout)
             if response.status_code == 200:
-                filename = f"picsum_{int(time.time())}.jpg"
+                filename = f"picsum_{int(time.time())}_{seed}.jpg"
                 file_path = output_path / filename
                 
                 with open(file_path, 'wb') as f:
