@@ -1,0 +1,27 @@
+title: "El Silencio de los Chakras - Official Teaser"
+language: "es"
+tts_backend: "edge_tts"
+tts_voice: "es-MX-JorgeNeural"
+tts_rate: "-5%"
+orientation: "vertical"
+output_format: "mp4"
+subtitles_enabled: true
+image_style: "cinematic, psychological thriller, high-contrast lighting, 8k resolution"
+
+speech_content: |
+  En la era del ruido digital, el verdadero peligro no viene del cielo... viene de nuestra necesidad de ser vistos. Adrián lo quería todo: métricas, millones de seguidores, validación virtual. Y convirtió el misterio en su mayor negocio.
+
+  Pero hay fuerzas ancestrales que no entienden de pantallas. Encuentros cercanos que agotan la vida, que quiebran el alma y apagan la energía interior.
+
+  Mientras el mundo se obsesiona con el destello de las luces en la noche, Daniel ha elegido el camino opuesto: el silencio, el refugio de la montaña y el control soberano de sus chakras. Dos realidades paralelas. Un infierno atrapado en las redes... y una victoria silenciosa que solo se escucha en los latidos del corazón. El Silencio de los Chakras. Muy pronto.
+
+visual_assets:
+  asset_type: "text_prompts"
+  prompts:
+    - "A dark cyber room, neon glowing screens displaying charts and flashing social media numbers reflecting on a charismatic young man's ambitious face, cinematic lighting."
+    - "A close-up of a nervous man's bloodshot eyes staring at a phone in a pitch black room, intense digital blue light illuminating his panic expression."
+    - "Eerie and mysterious bright glowing lights descending silently over a humble rural house at night, high-contrast shadows, cinematic atmosphere."
+    - "A distressed man grasping his chest as colorful energy flows (representing glowing chakras) appear fractured and drained from his body, dramatic volumetric smoke."
+    - "A calm man meditates in a majestic mountain retreat during sunset, clean soft golden light, deep spiritual atmosphere, peaceful nature landscape."
+    - "Split screen contrast: on one side a glowing healthy golden crown chakra energy, on the other side a dark cluttered room with millions of toxic digital alerts illuminating a lonely shadow on the floor."
+    - "A slow camera tilt up towards a silent clear infinite starry night sky, dark deep cosmos, serene cinematic wide shot, movie title typography overlay 'El Silencio de los Chakras'."

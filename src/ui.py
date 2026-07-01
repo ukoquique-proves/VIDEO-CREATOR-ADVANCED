@@ -10,14 +10,45 @@ import queue
 import sys
 import threading
 from pathlib import Path
+from typing import Optional, Dict
 
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
+from dotenv import load_dotenv
+# Load environment variables from .env file if present
+load_dotenv(project_root / ".env", override=False)
+
 import streamlit as st
+import asyncio
+import edge_tts
 
 from src.schema import VideoConfiguration, VisualAssetConfig, VisualAssetType, Orientation, Language
 from src.orchestrator import VideoOrchestrator
+from src import config_loader
+from src.main import _acquire_background_lock, _release_background_lock
+
+# Cache available voices by language code (to avoid re-fetching every time)
+@st.cache_data(show_spinner="Fetching available voices...")
+def get_available_voices():
+    """Fetch available voices from edge-tts, grouped by language code."""
+    async def fetch():
+        voices = await edge_tts.list_voices()
+        voices_by_lang = {}
+        for voice in voices:
+            lang_code = voice["Locale"].split("-")[0]
+            if lang_code not in voices_by_lang:
+                voices_by_lang[lang_code] = []
+            voices_by_lang[lang_code].append({
+                "name": voice["ShortName"],
+                "friendly": voice["FriendlyName"],
+                "gender": voice["Gender"],
+            })
+        # Sort voices by friendly name
+        for lang in voices_by_lang:
+            voices_by_lang[lang].sort(key=lambda x: x["friendly"])
+        return voices_by_lang
+    return asyncio.run(fetch())
 
 
 # ---------------------------------------------------------------------------
@@ -33,18 +64,39 @@ class _QueueHandler(logging.Handler):
         self._queue.put(self.format(record))
 
 
-def _run_pipeline(config: VideoConfiguration, result_queue: queue.Queue, log_queue: queue.Queue) -> None:
+def _run_pipeline(
+    config: VideoConfiguration, 
+    result_queue: queue.Queue, 
+    log_queue: queue.Queue,
+    uploaded_background_music: Optional[Dict[str, bytes]] = None, 
+    uploaded_images: Optional[Dict[str, bytes]] = None
+) -> None:
     handler = _QueueHandler(log_queue)
     handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
     src_logger = logging.getLogger("src")  # project-local logs only
     src_logger.addHandler(handler)
+    lock_path = Path(project_root / "output" / "logs" / ".generation.lock")
     try:
-        orchestrator = VideoOrchestrator(output_dir=str(project_root / "output"))
-        result = orchestrator.create_video(config)
+        # Load default output_dir from config_loader
+        cfg = config_loader.video()
+        default_output = cfg.get("output_dir", str(project_root / "output"))
+        lock_path = Path(default_output) / "logs" / ".generation.lock"
+
+        if not _acquire_background_lock(lock_path):
+            result_queue.put(("err", RuntimeError("A video generation is already running.")))
+            return
+
+        orchestrator = VideoOrchestrator(output_dir=default_output)
+        result = orchestrator.create_video(
+            config, 
+            uploaded_background_music=uploaded_background_music, 
+            uploaded_images=uploaded_images
+        )
         result_queue.put(("ok", result))
     except Exception as exc:
         result_queue.put(("err", exc))
     finally:
+        _release_background_lock(lock_path)
         src_logger.removeHandler(handler)
 
 
@@ -113,6 +165,12 @@ def main() -> None:
 
         subtitles_enabled = st.checkbox("Enable Subtitles", value=False)
 
+        save_to_source_folder = st.checkbox(
+            "Save to Source Folder",
+            value=True,
+            help="When using local images/videos, save the output video to the source folder. For AI-generated images, always uses the default output directory.",
+        )
+
         language_str = st.selectbox(
             "Language",
             options=[lang.value for lang in Language],
@@ -120,6 +178,39 @@ def main() -> None:
                 "en": "English", "es": "Spanish", "zh": "Chinese",
                 "fr": "French", "de": "German", "pt": "Portuguese",
             }.get(x, x.upper()),
+        )
+        
+        # Get available voices for selected language
+        voices_by_lang = get_available_voices()
+        lang_voices = voices_by_lang.get(language_str, [])
+        # Get default voice from config for this language
+        cfg = config_loader.tts()
+        lang_voices_config = cfg.get("language_voices", {})
+        default_voice_name = lang_voices_config.get(language_str, cfg.get("voice"))
+        
+        # Prepare voice options for dropdown
+        voice_options = [voice["name"] for voice in lang_voices] if lang_voices else [default_voice_name]
+        voice_labels = [f"{voice['gender']} - {voice['friendly']}" for voice in lang_voices] if lang_voices else [default_voice_name]
+        
+        # Set default index (prefer the configured default if available)
+        try:
+            default_index = voice_options.index(default_voice_name)
+        except ValueError:
+            default_index = 0
+            
+        tts_voice = st.selectbox(
+            "Voice",
+            options=voice_options,
+            index=default_index,
+            format_func=lambda x: voice_labels[voice_options.index(x)] if lang_voices else x,
+            help="Select a voice for text-to-speech",
+        )
+        
+        tts_rate = st.selectbox(
+            "Speaking Rate",
+            options=["-30%", "-20%", "-10%", "+0%", "+10%", "+20%", "+30%"],
+            index=3,
+            help="Adjust the speaking rate: slow down (-) or speed up (+)",
         )
 
     # ---- Form ----
@@ -235,16 +326,17 @@ def main() -> None:
             title=title,
             speech_content=speech_content,
             background_music=background_music_path.strip() or None,
-            uploaded_background_music=uploaded_background_music or None,
             visual_assets=VisualAssetConfig(
                 asset_type=VisualAssetType(asset_type_str),
                 prompts=prompts or None,
                 images=images or None,
-                uploaded_images=uploaded_images or None,
             ),
             subtitles_enabled=subtitles_enabled,
             orientation=Orientation(orientation_str),
             language=Language(language_str),
+            save_to_source_folder=save_to_source_folder,
+            tts_voice=tts_voice,
+            tts_rate=tts_rate,
         )
 
         st.session_state.log_lines = []
@@ -255,7 +347,13 @@ def main() -> None:
 
         st.session_state.thread = threading.Thread(
             target=_run_pipeline,
-            args=(config, st.session_state.result_queue, st.session_state.log_queue),
+            args=(
+                config, 
+                st.session_state.result_queue, 
+                st.session_state.log_queue,
+                uploaded_background_music or None,
+                uploaded_images or None,
+            ),
             daemon=True,
         )
         st.session_state.thread.start()

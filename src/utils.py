@@ -3,6 +3,33 @@ Shared utilities for the VideoCreation pipeline.
 """
 
 import re
+import shutil
+import subprocess
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def check_ffmpeg_available() -> None:
+    """Verify that ffmpeg and ffprobe are available on the system PATH.
+
+    Raises RuntimeError if either binary is missing or non-executable.
+    """
+    for tool in ["ffmpeg", "ffprobe"]:
+        if not shutil.which(tool):
+            raise RuntimeError(
+                f"Required tool '{tool}' not found on PATH. "
+                "Please install FFmpeg and ensure it is in your system PATH."
+            )
+    
+    # Optional: Quick version check to ensure they actually run
+    try:
+        subprocess.run(["ffmpeg", "-version"], capture_output=True, check=True)
+        subprocess.run(["ffprobe", "-version"], capture_output=True, check=True)
+    except Exception as exc:
+        raise RuntimeError(
+            f"FFmpeg tools found but failed to execute: {exc}"
+        ) from exc
 
 
 def sanitize_filename(title: str) -> str:

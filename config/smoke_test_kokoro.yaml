@@ -1,0 +1,13 @@
+title: "Smoke Demo Kokoro"
+language: en
+tts_backend: kokoro
+speech_content: |
+  Hello from Kokoro. This is a fresh neural voice generation to test the pipeline.
+visual_assets:
+  asset_type: "text_prompts"
+  prompts:
+    - "A bright blue sky with fluffy clouds, minimal, cinematic"
+subtitles_enabled: true
+image_engine: picsum
+output_format: "mp4"
+orientation: "vertical"

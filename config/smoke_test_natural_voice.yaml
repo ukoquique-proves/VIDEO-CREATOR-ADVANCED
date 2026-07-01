@@ -1,0 +1,15 @@
+title: "Smoke Demo with Natural Voice"
+language: en
+tts_backend: edge_tts
+tts_voice: "en-US-JennyNeural"
+tts_rate: "+0%"
+speech_content: |
+  Hello! This is a much more natural-sounding voice for your video creation. I hope you enjoy it!
+visual_assets:
+  asset_type: "text_prompts"
+  prompts:
+    - "A bright blue sky with fluffy clouds, minimal, cinematic"
+subtitles_enabled: true
+image_engine: picsum
+output_format: "mp4"
+orientation: "vertical"

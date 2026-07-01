@@ -5,6 +5,7 @@ Usage::
 
     python -m src.main --config my_video.yaml
     python -m src.main --config my_video.json --output-dir /tmp/videos
+    python -m src.main --config my_video.yaml --background
 
 Configuration files can be YAML or JSON and must match the
 ``VideoConfiguration`` schema (see src/schema.py or the README).
@@ -13,16 +14,88 @@ Configuration files can be YAML or JSON and must match the
 import argparse
 import json
 import logging
+import os
+import subprocess
 import sys
 from pathlib import Path
+import fcntl
+import uuid
 
 import yaml
+from dotenv import load_dotenv
+
+# Load environment variables from .env file if present
+load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=False)
 
 from src.schema import VideoConfiguration
 from src.orchestrator import VideoOrchestrator
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
+
+
+def _acquire_background_lock(lock_path: Path | str) -> bool:
+    """Prevent overlapping video generations by reserving a pid-file lock."""
+    path = Path(lock_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Use an fcntl-based exclusive non-blocking lock on the lock file.
+    # Hold the open file descriptor in a module-level dict so the lock
+    # remains held for the lifetime of the process until release.
+    global _LOCK_FDS
+    try:
+        _LOCK_FDS
+    except NameError:
+        _LOCK_FDS = {}
+
+    f = open(path, "a+", encoding="utf-8")
+    try:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (BlockingIOError, OSError):
+        # Another process holds the lock
+        try:
+            # attempt to read pid/uuid for diagnostics
+            f.seek(0)
+            info = f.read().strip()
+        except Exception:
+            info = ""
+        f.close()
+        return False
+
+    # We have the lock — write PID + run UUID for diagnosability
+    run_id = uuid.uuid4().hex
+    f.seek(0)
+    f.truncate(0)
+    f.write(f"{os.getpid()} {run_id}\n")
+    f.flush()
+    # keep file descriptor open to hold the lock
+    _LOCK_FDS[str(path)] = f
+    return True
+
+
+def _release_background_lock(lock_path: Path | str) -> None:
+    """Release the pid-file guard for a finished generation."""
+    global _LOCK_FDS
+    try:
+        _LOCK_FDS
+    except NameError:
+        _LOCK_FDS = {}
+
+    key = str(Path(lock_path))
+    f = _LOCK_FDS.pop(key, None)
+    if f is not None:
+        try:
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        except Exception:
+            pass
+        try:
+            f.close()
+        except Exception:
+            pass
+    try:
+        Path(lock_path).unlink(missing_ok=True)
+    except Exception:
+        pass
 
 
 def main() -> None:
@@ -41,6 +114,11 @@ def main() -> None:
         default=str(Path(__file__).resolve().parent.parent / "output"),
         metavar="DIR",
         help="Directory to save the generated video and workspace files.",
+    )
+    parser.add_argument(
+        "-b", "--background",
+        action="store_true",
+        help="Run video generation in the background (detached process).",
     )
     args = parser.parse_args()
 
@@ -73,14 +151,58 @@ def main() -> None:
         logger.error("Invalid configuration: %s", exc)
         sys.exit(1)
 
-    # Run pipeline
-    orchestrator = VideoOrchestrator(output_dir=args.output_dir)
+    lock_path = Path(args.output_dir) / "logs" / ".generation.lock"
+    lock_acquired = False
+
+    if args.background:
+        # When running in background, do NOT acquire lock in parent — let the child handle it!
+        # This prevents the race condition where parent releases lock before child acquires it
+        logger.info("Starting video generation in background...")
+        log_dir = Path(args.output_dir) / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / f"{config.title}.log"
+
+        # Detach process and run in background
+        cmd = [
+            sys.executable, "-m", "src.main",
+            "--config", str(config_path.resolve()),
+            "--output-dir", args.output_dir,
+        ]
+
+        with open(log_path, "w") as f:
+            proc = subprocess.Popen(
+                cmd,
+                stdout=f,
+                stderr=f,
+                start_new_session=True,
+                close_fds=True,
+            )
+
+        print(f"Background generation started! PID: {proc.pid}")
+        print(f"Logs: {log_path}")
+        sys.exit(0)
+
+    # Foreground execution: acquire lock and run pipeline
+    if not _acquire_background_lock(lock_path):
+        logger.error(
+            "A video generation is already running for output directory %s. "
+            "Wait for the current run to finish before starting another one.",
+            args.output_dir,
+        )
+        sys.exit(1)
+    lock_acquired = True
+
     try:
+        # Run pipeline in foreground
+        orchestrator = VideoOrchestrator(output_dir=args.output_dir)
         result = orchestrator.create_video(config)
         print(f"\nDone: {result['output_path']}")
     except Exception as exc:
         logger.error("Video generation failed: %s", exc)
         sys.exit(1)
+    finally:
+        if lock_acquired:
+            _release_background_lock(lock_path)
 
 
 if __name__ == "__main__":

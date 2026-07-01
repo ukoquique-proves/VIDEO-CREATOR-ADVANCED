@@ -3,25 +3,88 @@
 ## [Unreleased]
 
 ### Added
+- `src/image_providers/registry.py` — provider self-registration system with `ProviderSpec` and `ProviderRegistry` classes. Replaces hardcoded provider initialization; providers now auto-register based on available credentials. Makes it easy to add new providers without modifying adapter code. Includes priority-based ordering (Cloudflare → SiliconFlow → Pollinations → HuggingFace → Picsum) and clear logging of available/unavailable providers with reason.
+- `tests/test_provider_registry.py` — 19 tests covering provider specifications, registry management, credential checking, auto-registration, priority ordering, and integration with image adapter.
+- `PROVIDER_REGISTRY.md` — architecture guide for provider self-registration system, including how to add new providers, credential management, provider priorities, and benefits over hardcoded initialization.
+- `src/image_providers/cloud_detection.py` — automated cloud infrastructure detection (AWS, DigitalOcean, Hetzner, Linode, Vultr, Scaleway, Contabo) via reverse DNS, metadata endpoints, and IP ranges. Maintains a registry of providers known to be IP-banned on specific clouds (e.g., Pollinations on AWS). Implements fail-fast timeout reduction (5s for banned providers vs 60s default) to skip blocked providers early and reduce wasteful HTTP timeouts from 30+ seconds to near-instant fallover.
+- `src/metrics.py` — structured metrics collection system with `GenerationMetrics`, `StepMetrics`, and `ProviderMetrics` dataclasses; `MetricsCollector` API for tracking step-level timing (TTS, image generation, subtitles, assembly), provider performance (success rates, failover counts, execution times), and overall generation health. Includes 8-character request ID for log correlation across entire generation run.
+- `src/json_logging.py` — structured JSON logging with custom `JSONFormatter` that outputs all logs as JSON with extra fields, exception tracebacks, and timestamps. `setup_json_logging()` configures app-wide JSON output to console and/or file for integration with monitoring systems.
+- `CLOUD_DETECTION.md` — architecture and implementation guide for cloud infrastructure detection, IP-based provider skipping, and timeout optimization. Includes performance impact analysis (20-60 seconds saved per generation on cloud providers).
+- `METRICS.md` — comprehensive guide to structured logging and performance metrics, including JSON output format examples, usage patterns, provider performance tracking, step-level bottleneck identification, and future enhancement ideas (dashboards, alerting, auto-tuning).
+- `tests/test_cloud_detection.py` — 15 tests covering cloud detection accuracy (reverse DNS, metadata endpoints, IP ranges), ban registry, timeout configuration, and integration with provider manager.
+- `tests/test_metrics.py` — 21 tests covering metrics collection (provider stats, step timing), JSON export, structured logger with request IDs, and JSON formatter with exception handling.
 - `src/schema.py` — `VisualAssetType.MEDIA_SEQUENCE` documented and supported across adapters and the UI (local image/video mixes).
 - `INPUT_FIXING.md` — architecture and implementation plan for relocating all user-provided assets (images, video clips, speech text, and background music) into the per-video workspace.
+- `src/schema.py` — `VideoConfiguration.tts_voice` — new optional field to set a custom TTS voice per video, overriding config and language defaults; enables natural-sounding custom voices like "en-US-JennyNeural" or "es-MX-DaliaNeural" in Spanish.
+- `src/schema.py` — `VideoConfiguration.tts_rate` — new optional field to set a custom TTS speaking rate per video, overriding config default; supports values like "-30%" (slower) or "+30%" (faster).
+- `src/schema.py` — `VideoConfiguration.save_to_source_folder` — new optional boolean field (default False) to save output video to the same folder as the first local visual asset, instead of the default output directory (only applies when using local image/video assets).
+- `config/smoke_test_natural_voice.yaml` — smoke test config demonstrating the new custom `tts_voice` feature (English).
+- `config/smoke_test_spanish_sweet.yaml` — smoke test config demonstrating the new custom `tts_voice` feature (Spanish with Dalia female voice).
+- `config/smoke_test_spanish_male.yaml` — smoke test config demonstrating the new custom `tts_voice` feature (Spanish with Jorge male voice).
+- `tests/test_smoke.py` — full end-to-end smoke test verifying the entire pipeline with real dependencies.
+- `tests/test_save_to_source_folder.py` — dedicated tests for save-to-source-folder behavior, including edge cases like no local assets or mix of local/AI-generated assets.
+- `tests/test_tts_voice_propagation.py` — dedicated test to verify custom voice/rate propagates correctly from VideoConfiguration all the way to generate_speech().
+- `TROUBLESHOOTING.md` — entry about kokoro TTS voice issues (dependency size, Python version incompatibility) with clear workaround using free edge-tts.
+- `config/default_config.yaml` — new `uploads` section with configurable max sizes (50MB for images, 100MB for audio) and allowed extensions for both uploaded images and audio.
+- `src/orchestrator.py` — `_validate_upload_size()` and `_validate_upload_extension()` helper functions to validate uploaded files before saving them to disk; `_save_uploaded_images()` and `_save_uploaded_audio()` now enforce these safeguards; `VideoOrchestrator.__init__` now accepts an optional `provider_manager` parameter for dependency injection, and passes it to `image_adapter.generate_from_prompts`.
+- `src/main.py` — background mode fixed to not acquire lock in parent process, eliminating race condition where parent released lock before child could acquire it; child process now properly acquires lock for itself; added `dotenv.load_dotenv` at module level (entry point).
+- `src/ui.py` — added `dotenv.load_dotenv` at module level (entry point).
+- `src/assembler_adapter.py` — added `MoviePyProgressLogger` to log detailed progress (every 10%) during video write operation, making it clear to UI users that generation is not stuck.
+- `src/config_loader.py` — added support for config path overrides via both an explicit `path` parameter to `load()` and a `CONFIG_PATH` environment variable; cache is automatically cleared when config path changes.
+- `src/image_adapter.py` — removed module-level `dotenv.load_dotenv`; `generate_from_prompts` now accepts an optional `provider_manager` parameter; `_try_native_image_generation` now accepts an optional `provider_manager` parameter; still keeps `_provider_manager` global singleton for backward compatibility.
+- `TROUBLESHOOTING.md` — added section about testing philosophy (mocks vs real tests) to address user concerns about mock-based tests not checking real code.
+- `src/workspace_manager.py` — new `WorkspaceManager` class responsible for all workspace setup, output directory resolution, and cleanup; extracted from `VideoOrchestrator` for better testability and separation of concerns.
+- `src/upload_service.py` — new `UploadService` class responsible for validating and saving uploaded media (images, audio); extracted from `VideoOrchestrator` for better testability and separation of concerns.
+- `src/tts_service.py` — new `TTSService` class responsible for generating TTS audio; extracted from `VideoOrchestrator` for better testability and separation of concerns.
+- `src/visual_service.py` — new `VisualService` class responsible for preparing and modifying visual assets; extracted from `VideoOrchestrator` for better testability and separation of concerns.
+- `src/assembly_service.py` — new `AssemblyService` class responsible for preparing background music, generating subtitle segments, and assembling/burning final video; extracted from `VideoOrchestrator` for better testability and separation of concerns.
+- `src/orchestrator.py` — refactored `VideoOrchestrator` to be a thin facade using the new specialized services; maintained full backward compatibility while reducing complexity.
+- `src/visual_service.py` — fixed TypeError by only passing `provider_manager` to the default `image_adapter.generate_from_prompts`, not to gateway-provided `generate_from_prompts` callables.
+- `src/video_gateway.py` — updated `GenerateFromPromptsCallable` Protocol to include optional `provider_manager: Optional[Any] = None` parameter for future extensibility.
 
 ### Changed
+- `src/image_providers/base.py` — `ImageProvider` base class now includes `is_banned_on_infrastructure` flag to mark providers that are IP-blocked on the current cloud platform; `is_available()` docstring updated to reflect both rate-limiting and infrastructure bans.
+- `src/image_providers/manager.py` — detects cloud infrastructure at initialization and logs which providers are banned; accepts optional `metrics_collector` parameter for performance tracking; `generate_image()` method now tracks provider attempt timing and reports to metrics; generates informative error messages distinguishing between rate-limiting and IP-blocking.
+- `src/image_adapter.py` — replaced hardcoded provider initialization with declarative registry system; now calls `auto_register_providers()` to auto-register available providers based on credentials; simplified from ~10 hardcoded calls to 1 registry call; logs provider status at startup.
+- `TO_FIX.md` — reorganized implementation plan to show 3 completed items (cloud detection, metrics, provider registry) and clear ordering of remaining work.
+- `src/image_providers/pollinations.py` — uses cloud detection to determine recommended timeout (5s on banned cloud infrastructure, 60s otherwise) and returns clear error messages when IP-blocked instead of silently timing out; `is_available()` checks both rate-limit status and infrastructure ban flag.
+- `src/image_providers/manager.py` — detects cloud infrastructure at initialization and logs which providers are banned; accepts optional `metrics_collector` parameter for performance tracking; `generate_image()` method now tracks provider attempt timing and reports to metrics; generates informative error messages distinguishing between rate-limiting and IP-blocking.
+- `src/image_adapter.py` — replaced hardcoded provider initialization with declarative registry system; now calls `auto_register_providers()` to auto-register available providers based on credentials; simplified from ~10 hardcoded calls to 1 registry call; logs provider status at startup.
+- `TO_FIX.md` — marked cloud detection (#1), structured metrics (#2), and provider self-registration (#3) items as completed; updated prioritized implementation plan.
+- `config/default_config.yaml` — updated default voices to sweet natural-sounding ones: `en-US-BrianNeural` (English) and `es-MX-JorgeNeural` (Spanish).
 - `src/ui.py` — `Visual Source` now offers "User Provided (Local Media)" and accepts common video formats (mp4, mov, webm, mkv, avi) as well as images.
+- `src/ui.py` — added `Save to Source Folder` checkbox in sidebar (default True), added `Voice` dropdown that dynamically populates with available edge-tts voices based on selected language, and added `Speaking Rate` dropdown with preset options (-30% to +30%).
+- `src/ui.py` — added async helper `get_available_voices()` with `st.cache_data()` to fetch voices once and reuse for UI dropdowns.
 - `src/assembler_adapter.py` — local moviepy fallback dispatches visual assets by extension, using `VideoFileClip` for video files (stripping embedded audio) and `ImageClip` for images; clips are trimmed or looped to fill assigned durations.
 - `src/orchestrator.py` — when `background_music` is provided, the source file is copied into `workspace/audio` and the workspace-local copy is used for assembly; invalid paths raise `FileNotFoundError` before video assembly starts.
+- `src/orchestrator.py` — added logic to check `config.save_to_source_folder` and use parent directory of first local visual asset as output directory if enabled (otherwise uses default output directory).
+- `src/orchestrator.py` — updated `_run_tts_audio()` to forward the new `tts_voice` and `tts_rate` config fields to `generate_speech()`.
+- `src/schema.py` — `VideoConfiguration.image_modification_instructions` is now rejected during validation with a clear message, preventing unsupported fields from reaching the pipeline.
+- `src/video_gateway.py` — `VideoGateway` now warns when a partial gateway configuration is provided, making missing injectable callables visible early.
+- `src/video_gateway.py` — updated `VideoGateway` to support `voice` and `rate` kwargs in its `tts` callable for forward compatibility.
+- `src/orchestrator.py` — subtitle burn-in now checks for a configured `SubtitleBackend` and raises a clear error if none is available, avoiding hidden failures when subtitles are enabled.
+- `tests/test_orchestrator.py` — removed obsolete `modify_images` patching and updated validation coverage to reflect the current unsupported image modification path.
+- `tests/test_video_gateway.py` — updated dummy `tts` callable to accept `voice` and `rate` keyword arguments.
 - `src/utils.py` — added `sanitize_filename_preserve_extension()` so uploaded filenames remain filesystem-safe while retaining their original extension (e.g. `.mp3`, `.png`, `.mp4`).
+- `src/utils.py` — added `is_video_file()` helper to detect video file types by extension (mp4, mov, webm, mkv, avi).
  - `src/orchestrator.py` — `create_video()` complexity reduced by extracting private step methods (`_run_tts_audio`, `_resolve_dimensions_and_orientation`, `_prepare_visuals_with_modifications`, `_generate_subtitle_segments`, `_prepare_background_music`, `_assemble_and_burn_video`, `_cleanup_workspace`) for improved readability and testability.
  - `src/orchestrator.py` / `src/assembler_adapter.py` — consolidated audio duration resolution into `_resolve_total_duration()` and threaded the resulting `duration` through subtitle generation and assembly to ensure consistent timing across paths.
  - Repository hygiene: updated `.gitignore` and added `.gitattributes` to exclude generated `output/`, `tmp_real/`, `test_out/`, caches and media files from VCS and `git archive` exports; removed stray tracked test artifact `test_cf_out.png`.
  - Backend initialization: defers heavy backend instantiation (Lingo assembler and FFmpeg subtitle backend) until actually needed and preserves test patchability (`src/assembler_adapter.py` `_get_default_backend()`, `src/orchestrator.py` lazy `FFmpegSubtitleBackend` import).
+ - `src/tts_adapter.py` — updated kokoro fallback chain to use free edge-tts instead of espeak (which requires additional system dependencies), with proper voice selection from config/language defaults.
+ - `requirements.txt` — updated kokoro version to >=0.7.16 for potential compatibility (note: kokoro still requires Python <=3.12 and large dependencies, see TROUBLESHOOTING.md).
+ - **Domain schema pollution fixed** — removed UI-only fields `uploaded_images` and `uploaded_background_music` from `VideoConfiguration` and `VisualAssetConfig` in `src/schema.py`; these are now passed as separate optional parameters to `VideoOrchestrator.create_video()`, `VisualService.prepare_visuals()`, `VisualService.prepare_visuals_with_modifications()`, and `AssemblyService.prepare_background_music()`, keeping the domain models clean and free of UI concerns.
 
 ### Fixed
 - `src/assembler_adapter.py` — import `is_video_file` from `src.utils` so the local moviepy fallback does not raise `NameError` when invoked; this fixes a crash when assembling mixed image/video visual assets without the Lingo assembler available.
 - `src/tts_adapter.py` — guard the TTS cache against zero-byte files: module now removes zero-byte cache entries, skips caching empty generation results, and regenerates a short silent fallback to avoid permanently poisoning the cache.
 - `src/utils.py` / `src/orchestrator.py` — `sanitize_filename()` now replaces runs of `.` with underscores and prevents dot-only results; `VideoOrchestrator.create_video()` validates the resolved workspace path is contained within `output_dir`, preventing path traversal via untrusted titles (e.g. ".." or "../../etc").
+- `src/schema.py` — `VideoConfiguration.image_modification_instructions` is now rejected during validation with a clear message, preventing unsupported fields from reaching the pipeline.
+- `tests/test_schema.py` — added validation coverage to ensure `image_modification_instructions` is rejected by the schema.
 - `tests/test_orchestrator.py` — added regression coverage for background music workspace relocation and invalid background music path handling.
 - `run_test_media_video.py` — new end-to-end smoke test validating `MEDIA_SEQUENCE` feature (multiple video clip concatenation, audio sync, subtitle burn-in) with horizontal orientation and audio-driven duration.
+- `tests/test_adapters.py` — renamed `test_kokoro_falls_back_to_espeak_when_dependency_missing` to `test_kokoro_falls_back_to_edge_tts_when_dependency_missing` and updated assertions to match new edge-tts fallback behavior.
+- `tests/test_adapters.py` — updated `test_language_resolves_to_correct_voice` to expect new default voices (`es-MX-JorgeNeural` for Spanish).
 
 
 ## [0.4.0] - 2026-06-18

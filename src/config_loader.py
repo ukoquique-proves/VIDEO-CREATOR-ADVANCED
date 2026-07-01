@@ -3,31 +3,56 @@ Config loader — reads config/default_config.yaml and exposes typed settings.
 """
 
 import copy
+import os
 import threading
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import yaml
 
-_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "default_config.yaml"
+_DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "default_config.yaml"
 _cache: Dict[str, Any] = {}
+_current_config_path: Optional[str] = None
 _lock = threading.Lock()
 
 
-def load() -> Dict[str, Any]:
-    """Return the parsed config dict (cached after first load)."""
+def load(path: Optional[Path] = None) -> Dict[str, Any]:
+    """
+    Return the parsed config dict (cached after first load).
+    
+    Args:
+        path: Optional path to config file. If not provided, checks
+              CONFIG_PATH env var, then falls back to default_config.yaml.
+    """
+    global _current_config_path
     with _lock:
+        # Determine config path
+        if path is None:
+            config_path_env = os.environ.get("CONFIG_PATH")
+            if config_path_env:
+                config_path = Path(config_path_env).resolve()
+            else:
+                config_path = _DEFAULT_CONFIG_PATH
+        else:
+            config_path = Path(path).resolve()
+        config_path_str = str(config_path)
+        
+        # If path changed, clear cache
+        if _current_config_path != config_path_str:
+            _cache.clear()
+            _current_config_path = config_path_str
+        
         if not _cache:
             _new: Dict[str, Any] = {}
             try:
-                with open(_CONFIG_PATH, "r") as f:
+                with open(config_path, "r") as f:
                     data = yaml.safe_load(f)
                     if data:
                         _new.update(data)
             except FileNotFoundError:
                 raise RuntimeError(
-                    f"VideoCreation config not found: {_CONFIG_PATH}\n"
-                    "Ensure 'config/default_config.yaml' exists at the project root."
+                    f"VideoCreation config not found: {config_path}\n"
+                    f"Ensure config file exists at the specified path, or set CONFIG_PATH env var."
                 ) from None
             _cache.update(_new)
         return copy.deepcopy(_cache)
@@ -37,6 +62,8 @@ def _clear_cache() -> None:
     """Clear the config cache. Intended for use in tests only."""
     with _lock:
         _cache.clear()
+        global _current_config_path
+        _current_config_path = None
 
 
 def tts() -> Dict[str, Any]:

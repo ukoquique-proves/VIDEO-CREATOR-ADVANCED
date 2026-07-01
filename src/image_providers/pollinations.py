@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 
 from src.image_providers.base import ImageProvider, ProviderResult, ProviderStatus
+from src.image_providers import cloud_detection
 
 
 class PollinationsProvider(ImageProvider):
@@ -32,12 +33,17 @@ class PollinationsProvider(ImageProvider):
     
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         super().__init__("pollinations", config)
-        self.timeout = config.get('timeout', 60) if config else 60
-        self.max_retries = config.get('max_retries', 2) if config else 2
+        # Use recommended timeout based on cloud infrastructure detection
+        default_timeout = config.get('timeout', 90) if config else 90
+        self.timeout = cloud_detection.get_recommended_timeout("pollinations", default_timeout)
+        self.max_retries = config.get('max_retries', 1) if config else 1
         self.retry_delay = config.get('retry_delay', 1) if config else 1
+        self.is_banned_on_infrastructure = cloud_detection.is_provider_banned("pollinations")
     
     def is_available(self) -> bool:
-        """Check if provider is available (not rate limited)."""
+        """Check if provider is available (not rate limited or banned on this infrastructure)."""
+        if self.is_banned_on_infrastructure:
+            return False
         return self.check_rate_limit_status()
     
     def generate(self, prompt: str, width: int = 1080, height: int = 1920,
@@ -56,6 +62,12 @@ class PollinationsProvider(ImageProvider):
             ProviderResult with success status and image path
         """
         if not self.is_available():
+            if self.is_banned_on_infrastructure:
+                return ProviderResult(
+                    success=False,
+                    error_message=f"Provider {self.name} is IP-blocked on this cloud infrastructure (known ban)",
+                    provider_name=self.name
+                )
             return ProviderResult(
                 success=False,
                 error_message=f"Provider {self.name} is rate limited",

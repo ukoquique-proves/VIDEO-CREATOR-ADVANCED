@@ -3,13 +3,33 @@
 Unit tests for the adapter modules (tts, image, subtitle, assembler).
 """
 
+import builtins
+import logging
 import os
+from pathlib import Path
 import pytest
 import numpy as np
 from unittest.mock import patch, MagicMock
 from PIL import Image
 
 from src import tts_adapter, image_adapter, subtitle_adapter
+from src.schema import VideoConfiguration, VisualAssetConfig, VisualAssetType, VideoContext
+
+
+def _make_context(tmp_path):
+    config = VideoConfiguration(
+        title="Test",
+        visual_assets=VisualAssetConfig(asset_type=VisualAssetType.IMAGE_SEQUENCE),
+    )
+    return VideoContext(
+        config=config,
+        output_dir=tmp_path,
+        workspace=tmp_path,
+        width=1080,
+        height=1920,
+        merged_config={"tts": {}, "image": {}, "subtitles": {}, "video": {}},
+        logger=logging.getLogger("test"),
+    )
 
 
 # =========================================================================== #
@@ -30,6 +50,48 @@ class TestTTSAdapter:
         with patch.object(tts_adapter, "_openai_tts", return_value=out) as mock_openai:
             tts_adapter.generate_speech("Hello", out, method="openai")
         mock_openai.assert_called_once()
+
+    def test_kokoro_tts_called(self, tmp_path):
+        """Passing method='kokoro' should call _kokoro_tts."""
+        out = str(tmp_path / "kokoro.mp3")
+        with patch.object(tts_adapter, "_kokoro_tts", return_value=out) as mock_kokoro:
+            tts_adapter.generate_speech("Hello", out, method="kokoro")
+        mock_kokoro.assert_called_once()
+
+    def test_kokoro_uses_language_default_voice(self, tmp_path):
+        """Kokoro should resolve a sensible default voice from the language mapping."""
+        out = str(tmp_path / "kokoro_voice.mp3")
+        with patch.object(tts_adapter, "_kokoro_tts", return_value=out) as mock_kokoro:
+            tts_adapter.generate_speech("Hola", out, language="es", method="kokoro")
+        mock_kokoro.assert_called_once()
+        args, _ = mock_kokoro.call_args
+        assert args[:4] == ("Hola", out, "ef_dora", "es")
+
+    def test_kokoro_falls_back_to_edge_tts_when_dependency_missing(self, tmp_path):
+        """Kokoro should fall back to edge-tts when its runtime is unavailable."""
+        out = str(tmp_path / "edge.mp3")
+        real_import = builtins.__import__
+
+        def fail_kokoro_import(name, *args, **kwargs):
+            if name in {"kokoro", "soundfile", "numpy"}:
+                raise ImportError("missing")
+            return real_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=fail_kokoro_import), \
+             patch.object(tts_adapter, "_edge_tts", return_value=out) as mock_edge:
+            result = tts_adapter._kokoro_tts("Hello", out, "af_heart", "en")
+
+        assert result == out
+        mock_edge.assert_called_once()
+
+    def test_generate_speech_warns_on_legacy_context_first_call(self, tmp_path):
+        """Legacy context-first positional TTS calls should warn and still work."""
+        out = str(tmp_path / "legacy_context.mp3")
+        context = _make_context(tmp_path)
+        with pytest.warns(DeprecationWarning, match="deprecated"):
+            with patch.object(tts_adapter, "_edge_tts", return_value=out) as mock_tts:
+                tts_adapter.generate_speech(context, "Hello", out, method="edge_tts")
+        assert mock_tts.called
 
     def test_generate_speech_caching(self, tmp_path):
         """TTS should use cache on subsequent identical requests."""
@@ -73,14 +135,18 @@ class TestTTSAdapter:
         out = str(tmp_path / "es.mp3")
         with patch.object(tts_adapter, "_edge_tts", return_value=out) as mock_tts:
             tts_adapter.generate_speech("Hola", out, language="es")
-        mock_tts.assert_called_once_with("Hola", out, "es-AR-TomasNeural", "+0%")
+        mock_tts.assert_called_once()
+        args, _ = mock_tts.call_args
+        assert args[:4] == ("Hola", out, "es-MX-JorgeNeural", "+0%")
 
     def test_explicit_voice_overrides_language(self, tmp_path):
         """An explicit voice parameter must take precedence over language."""
         out = str(tmp_path / "override.mp3")
         with patch.object(tts_adapter, "_edge_tts", return_value=out) as mock_tts:
             tts_adapter.generate_speech("Hello", out, voice="en-GB-RyanNeural", language="es")
-        mock_tts.assert_called_once_with("Hello", out, "en-GB-RyanNeural", "+0%")
+        mock_tts.assert_called_once()
+        args, _ = mock_tts.call_args
+        assert args[:4] == ("Hello", out, "en-GB-RyanNeural", "+0%")
 
     def test_unknown_language_falls_back_to_config_voice(self, tmp_path):
         """An unrecognised language code should fall back to the config default voice."""
@@ -89,7 +155,8 @@ class TestTTSAdapter:
             tts_adapter.generate_speech("Hello", out, language="xx")
         # Should use the config default, not crash
         mock_tts.assert_called_once()
-        _, called_voice = mock_tts.call_args[0][1], mock_tts.call_args[0][2]
+        args, _ = mock_tts.call_args
+        called_voice = args[2]
         assert isinstance(called_voice, str) and len(called_voice) > 0
 
     def test_config_language_voices_override_hardcoded_map(self, tmp_path):
@@ -100,7 +167,9 @@ class TestTTSAdapter:
             "language_voices": {"es": "es-MX-JorgeNeural"},
         }), patch.object(tts_adapter, "_edge_tts", return_value=out) as mock_tts:
             tts_adapter.generate_speech("Hola", out, language="es")
-        mock_tts.assert_called_once_with("Hola", out, "es-MX-JorgeNeural", "+0%")
+        mock_tts.assert_called_once()
+        args, _ = mock_tts.call_args
+        assert args[:4] == ("Hola", out, "es-MX-JorgeNeural", "+0%")
 
 
 # =========================================================================== #
@@ -124,6 +193,14 @@ class TestImageAdapter:
         """Provided images should be copied into the workspace."""
         out_dir = str(tmp_path / "copied")
         paths = image_adapter.copy_provided_images(sample_images, out_dir)
+        assert len(paths) == 2
+
+    def test_copy_provided_images_warns_on_legacy_context_first_call(self, sample_images, tmp_path):
+        """Legacy context-first positional image calls should warn and still work."""
+        context = _make_context(tmp_path)
+        out_dir = str(tmp_path / "copied")
+        with pytest.warns(DeprecationWarning, match="deprecated"):
+            paths = image_adapter.copy_provided_images(context, sample_images, out_dir)
         assert len(paths) == 2
         for p in paths:
             assert os.path.isfile(p)
@@ -160,7 +237,7 @@ class TestImageAdapter:
 
         mock_try.assert_called_once()
         positional_args, _ = mock_try.call_args
-        assert positional_args[4] == "cloudflare"
+        assert positional_args[5] == "cloudflare"
         assert paths == ["cloudflare.png"]
 
 
@@ -207,6 +284,13 @@ class TestSubtitleAdapter:
             segments = subtitle_adapter.generate_subtitle_segments(text)
             for seg in segments:
                 assert seg["text"].strip() != "", f"Empty segment from input {text!r}"
+
+    def test_generate_subtitle_segments_warns_on_legacy_context_first_call(self):
+        """Legacy context-first positional subtitle calls should warn and still work."""
+        context = _make_context(Path("."))
+        with pytest.warns(DeprecationWarning, match="deprecated"):
+            segments = subtitle_adapter.generate_subtitle_segments(context, "Hello world.", total_duration=2.0)
+        assert segments
 
 
 # =========================================================================== #

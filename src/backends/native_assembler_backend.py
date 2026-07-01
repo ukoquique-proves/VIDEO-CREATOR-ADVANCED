@@ -28,9 +28,14 @@ class NativeAssemblerBackend:
         width: int,
         height: int,
         duration: Optional[float] = None,
+        context = None,
+        visual_durations: Optional[List[float]] = None,
+        **kwargs,
     ) -> Optional[str]:
         try:
-            return assembler_adapter._local_moviepy_assemble(
+            merged_config = context.merged_config if context else None
+            use_logger = context.logger if context else logger
+            return assembler_adapter.local_moviepy_assemble(
                 audio_path=audio_path,
                 visual_files=visual_files,
                 output_dir=output_dir,
@@ -39,7 +44,13 @@ class NativeAssemblerBackend:
                 height=height,
                 duration=duration,
                 background_music=background_music,
+                merged_config=merged_config,
+                log=use_logger,
+                visual_durations=visual_durations,
             )
+        except (RuntimeError, ImportError):
+            raise
         except Exception as exc:
-            logger.error("Native assembler failed: %s", exc)
+            use_logger = context.logger if context else logger
+            use_logger.error("Native assembler failed: %s", exc)
             return None

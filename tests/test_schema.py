@@ -90,14 +90,24 @@ class TestVideoConfiguration:
                 asset_type=VisualAssetType.TEXT_PROMPTS,
                 prompts=["prompt1"],
             ),
-            image_modification_instructions="Make it brighter",
             subtitles_enabled=True,
             output_format=OutputFormat.WEBM,
         )
         assert cfg.length_seconds == 60
         assert cfg.subtitles_enabled is True
         assert cfg.output_format == OutputFormat.WEBM
-        assert cfg.image_modification_instructions == "Make it brighter"
+
+    def test_image_modification_instructions_rejected(self):
+        with pytest.raises(ValueError, match="image_modification_instructions is reserved for future use"):
+            VideoConfiguration(
+                title="Unsupported Modify",
+                speech_content="Some speech content here.",
+                visual_assets=VisualAssetConfig(
+                    asset_type=VisualAssetType.TEXT_PROMPTS,
+                    prompts=["prompt1"],
+                ),
+                image_modification_instructions="Make it brighter",
+            )
 
     def test_language_field(self):
         cfg = VideoConfiguration(

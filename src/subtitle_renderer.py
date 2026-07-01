@@ -182,7 +182,7 @@ def _color_to_ass(color: str) -> str:
 def _ffmpeg_burn(video_path: str, ass_path: str, output_path: str) -> bool:
     """Call ffmpeg to burn the ASS subtitles onto the video."""
     # Robust path escaping for ffmpeg filters
-    p = ass_path.replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+    p = ass_path.replace("\\", "/").replace(":", "\\:").replace("'", "\\'").replace(",", "\\,")
     escaped_ass = f"'{p}'"
 
     cmd = [

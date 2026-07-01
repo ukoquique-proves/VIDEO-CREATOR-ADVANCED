@@ -38,6 +38,7 @@ class ImageProvider(ABC):
         self.last_error_time: Optional[float] = None
         self.consecutive_errors = 0
         self.rate_limit_reset_time: Optional[float] = None
+        self.is_banned_on_infrastructure: bool = False  # Set by manager if banned on current cloud
     
     @abstractmethod
     def generate(self, prompt: str, width: int = 1080, height: int = 1920, 
@@ -58,7 +59,7 @@ class ImageProvider(ABC):
     
     @abstractmethod
     def is_available(self) -> bool:
-        """Check if this provider is currently available (not rate limited)."""
+        """Check if this provider is currently available (not rate limited or banned on this infrastructure)."""
         pass
     
     def mark_rate_limited(self, reset_time: Optional[float] = None):

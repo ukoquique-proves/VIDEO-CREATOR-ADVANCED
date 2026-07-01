@@ -7,6 +7,7 @@ Whisper-based forced alignment (Phase 4).
 
 import logging
 import re
+import warnings
 from typing import Dict, List, Optional
 
 from src import config_loader
@@ -14,32 +15,46 @@ from src import config_loader
 logger = logging.getLogger(__name__)
 
 
+from src.schema import VideoContext
+
 def generate_subtitle_segments(
-    text: str,
-    total_duration: Optional[float] = None,
-    words_per_second: Optional[float] = None,
-    max_words_per_chunk: Optional[int] = None,
-    start_offset: float = 0.0,
+    *args,
+    **kwargs
 ) -> List[Dict]:
-    """Split *text* into timed subtitle segments.
+    """Split text into timed subtitle segments.
 
-    Parameters
-    ----------
-    text:
-        Full speech content.
-    total_duration:
-        If provided, segments are scaled to fit this duration exactly.
-    words_per_second:
-        Estimated speaking rate. Defaults to config value (``subtitles.words_per_second``).
-    max_words_per_chunk:
-        Maximum words per subtitle line. Defaults to config value (``subtitles.max_words_per_chunk``).
+    The preferred call style is keyword-based, for example:
+    generate_subtitle_segments(text="Hello", total_duration=5.0, context=context)
 
-    Returns
-    -------
-    list[dict]
-        Each dict has keys ``text``, ``start``, ``end``, ``duration_estimate``.
+    Legacy positional calls that pass a VideoContext as the first argument are
+    still supported for compatibility, but they emit a DeprecationWarning.
     """
-    cfg = config_loader.subtitles()
+    if args and isinstance(args[0], VideoContext):
+        warnings.warn(
+            "Passing VideoContext positionally to generate_subtitle_segments() is deprecated; use context=... instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        context = args[0]
+        text = args[1] if len(args) > 1 else kwargs.pop("text", None)
+        total_duration = args[2] if len(args) > 2 else kwargs.pop("total_duration", None)
+        words_per_second = args[3] if len(args) > 3 else kwargs.pop("words_per_second", None)
+        max_words_per_chunk = args[4] if len(args) > 4 else kwargs.pop("max_words_per_chunk", None)
+        start_offset = args[5] if len(args) > 5 else kwargs.pop("start_offset", 0.0)
+        
+        cfg = context.merged_config.get("subtitles", {})
+        use_logger = context.logger
+    else:
+        context = None
+        text = args[0] if len(args) > 0 else kwargs.pop("text", None)
+        total_duration = args[1] if len(args) > 1 else kwargs.pop("total_duration", None)
+        words_per_second = args[2] if len(args) > 2 else kwargs.pop("words_per_second", None)
+        max_words_per_chunk = args[3] if len(args) > 3 else kwargs.pop("max_words_per_chunk", None)
+        start_offset = args[4] if len(args) > 4 else kwargs.pop("start_offset", 0.0)
+        
+        cfg = config_loader.subtitles()
+        use_logger = logger
+        
     if words_per_second is None:
         words_per_second = cfg.get("words_per_second", 2.5)
     if max_words_per_chunk is None:
@@ -49,10 +64,7 @@ def generate_subtitle_segments(
     if not words:
         return []
 
-    # Split into chunks
     chunks: List[str] = []
-    # Try to split on sentence boundaries first; filter empty strings that can
-    # result from trailing punctuation + whitespace before/after strip()
     sentences = [s for s in re.split(r'(?<=[.!?])\s+', text.strip()) if s.strip()]
 
     for sentence in sentences:
@@ -65,18 +77,15 @@ def generate_subtitle_segments(
     if not chunks:
         chunks = [text.strip()]
 
-    # Estimate duration for each chunk
     raw_durations = [len(c.split()) / words_per_second for c in chunks]
     total_raw = sum(raw_durations)
 
-    # Scale to fit total_duration if provided
     if total_duration is not None and total_duration > 0 and total_raw > 0:
         scale = total_duration / total_raw
         durations = [d * scale for d in raw_durations]
     else:
         durations = raw_durations
 
-    # Build segments
     segments: List[Dict] = []
     cursor = 0.0
     for chunk, dur in zip(chunks, durations):
@@ -89,7 +98,7 @@ def generate_subtitle_segments(
         })
         cursor += dur
 
-    logger.info(
+    use_logger.info(
         "Generated %d subtitle segments (total %.1fs).",
         len(segments),
         cursor,

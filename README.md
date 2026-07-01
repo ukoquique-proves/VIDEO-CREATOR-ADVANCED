@@ -2,7 +2,7 @@
 
 A fully decoupled, configurable video generation pipeline that accepts user-defined content — speech text, visual assets, and styling options — and produces a complete video file.
 
-Lingo_PERSONAS is now completely optional and only available as a legacy fallback; all core functionality (AI image generation, TTS, subtitle rendering, and video assembly are implemented natively.
+All core functionality (AI image generation, TTS, subtitle rendering, and video assembly) is implemented natively; legacy Lingo integrations have been removed.
 
 ---
 
@@ -36,8 +36,7 @@ Lingo_PERSONAS is now completely optional and only available as a legacy fallbac
 | `src/subtitle_renderer.py` | ffmpeg ASS-based subtitle burn-in (precise positioning, descender fix) |
 | `src/backends/__init__.py` | `AssemblerBackend` and `SubtitleBackend` protocol definitions |
 | `src/backends/native_assembler_backend.py` | Native MoviePy backend (default, fully decoupled) |
-| `src/assembler_adapter.py` | Final video assembly (native MoviePy, Lingo as optional fallback) |
-| `src/backends/lingo_assembler_backend.py` | Legacy Lingo_PERSONAS VideoAssembler wrapped as fallback |
+| `src/assembler_adapter.py` | Final video assembly (native MoviePy) |
 | `src/utils.py` | Shared pipeline utilities (filename sanitization, helpers) |
 | `src/config_loader.py` | Reads and caches `config/default_config.yaml` |
 | `src/ui.py` | Streamlit UI for interactive video generation |
@@ -89,7 +88,7 @@ python -m streamlit run src/ui.py
 The UI supports:
 - **Interactive Configuration**: Set titles, speech content, and orientation.
 - **Visual Asset Management**: Upload local images or video clips directly, or provide AI prompts. The UI accepts common image and video formats when "User Provided (Local Media)" is selected.
-- **Background Music Support**: Provide a local audio file path via `background_music`; the file is copied into the video workspace before assembly. Note: if the Lingo assembler is unavailable, local fallback cannot preserve background music and assembly may fail.
+- **Background Music Support**: Provide a local audio file path via `background_music`; the file is copied into the video workspace before assembly.
 - **Real-time Logs**: Monitor the generation progress directly in the browser.
 - **Video Preview**: Watch the generated video immediately after assembly.
 
@@ -118,6 +117,14 @@ result = orchestrator.create_video(config)
 print(f"Video saved: {result['output_path']}")
 ```
 
+### Organizing Your Assets (Where to Put Files)
+
+For a complete guide on how to organize your images, videos, and audio files, please see the [ASSETS_GUIDE.md](ASSETS_GUIDE.md). The quick summary is:
+
+- **Put your source materials** in `assets/` (not `workspace/`)
+- **Reference them** using relative paths from the project root in your config
+- **Don't worry about workspace** — that's managed automatically for you
+
 ### Configuration Options
 
 | Field | Type | Default | Description |
@@ -127,8 +134,8 @@ print(f"Video saved: {result['output_path']}")
 | `speech_content` | str | *required* | Text converted to speech audio |
 | `visual_assets` | VisualAssetConfig | *required* | Images or AI prompts |
 | `length_seconds` | float \| None | None | Target duration in seconds (auto if None) |
-| `background_music` | str \| None | None | Path to background audio. The file is copied into `workspace/audio` before assembly. If the Lingo assembler is unavailable, the local fallback may not support background music. |
-| `image_modification_instructions` | str \| None | None | AI image editing instructions (currently unimplemented; setting this raises NotImplementedError) |
+| `background_music` | str \| None | None | Path to background audio. Put your audio files in `assets/audio/` |
+| `image_modification_instructions` | str \| None | None | **NOT IMPLEMENTED** — Reserved for future use. This field is intentionally rejected by schema validation. Do not include it in your configuration. |
 | `subtitles_enabled` | bool | False | Burn subtitles into the video |
 | `output_format` | OutputFormat | mp4 | `mp4`, `mov`, `avi`, or `webm` |
 | `orientation` | Orientation | `vertical` | `vertical` (9:16) or `horizontal` (16:9) |
@@ -137,7 +144,7 @@ print(f"Video saved: {result['output_path']}")
 | `image_engine` | ImageEngine \| None | None | Per-video image engine override (`cloudflare`, `siliconflow`, `huggingface`, `pollinations`, `picsum`) |
 | `image_style` | str \| None | None | Per-video image style override (e.g. `cinematic`, `photorealistic`) |
 
-> Note: `image_modification_instructions` is reserved for future use. The current implementation is not yet available and will raise `NotImplementedError` if provided.
+> ⚠️ **Image Modification is Not Supported**: `image_modification_instructions` is intentionally not implemented in this version. The schema proactively rejects any configuration that includes this field with a clear error message. If you see a validation error mentioning this field, simply remove it from your configuration file. This feature is planned for a future release.
 
 ### Environment Variables
 
@@ -151,13 +158,6 @@ HUGGINGFACE_API_KEY=your_key
 ```
 
 All keys are optional — the pipeline falls through to the next available provider automatically.
-
-To opt into the legacy Lingo_PERSONAS integration (only recommended for
-operators who know which Lingo version they intend to use), set the
-``USE_LINGO`` environment variable to a truthy value (``1``, ``true``,
-``yes``) and optionally set ``LINGO_ROOT`` to point at the Lingo root
-directory. When ``USE_LINGO`` is not set the project stays fully
-decoupled and will not inject vendor paths into ``sys.path``.
 
 ---
 
@@ -184,7 +184,7 @@ python -m pytest tests/test_adapters.py -v
 python -m pytest tests/test_subtitle_renderer.py -v
 ```
 
-Most unit tests mock external dependencies (TTS, AI image generation, video assembly) so they run **fast** and **offline** — no API keys or network required. Some convenience scripts and vendored integration tests rely on `Lingo_PERSONAS` and provider SDKs (e.g. `openai`) and will be skipped when those packages are not available.
+Most unit tests mock external dependencies (TTS, AI image generation, video assembly) so they run **fast** and **offline** — no API keys or network required.
 
 ### Test Flows Covered
 
@@ -193,10 +193,10 @@ Most unit tests mock external dependencies (TTS, AI image generation, video asse
 3. **Video with subtitles** — subtitle burn-in enabled
 4. **Background music** — music mixing path
 5. **Custom output format** — `.webm` output
-6. **Image modification** — verifies `modify_images` is called with the correct instruction string, and is not called when no instructions are set
+6. **Image modification** — verifies `image_modification_instructions` is rejected at schema validation time and no image modification path is executed.
 7. **No visuals error** — validates proper error handling
 8. **Subtitle renderer** — frame size, descender pixel check, text wrapping, empty text
-9. **Assembler backend** — burn-in called/skipped, Lingo fallback, moviepy import error
+9. **Assembler backend** — burn-in called/skipped, moviepy import error
 
 ---
 
@@ -204,8 +204,14 @@ Most unit tests mock external dependencies (TTS, AI image generation, video asse
 
 ```
 VideoCreation/
-├── config/
-│   └── default_config.yaml
+├── assets/                   # Your source materials (images, videos, audio)
+│   ├── your_video/           # Per-video assets
+│   │   ├── audio/
+│   │   └── visuals/
+│   └── shared/               # Reusable assets
+├── config/                   # Video configuration files
+│   ├── default_config.yaml
+│   └── escenas.yaml
 ├── src/
 │   ├── __init__.py
 │   ├── schema.py
@@ -215,38 +221,16 @@ VideoCreation/
 │   ├── subtitle_adapter.py
 │   ├── subtitle_renderer.py
 │   ├── assembler_adapter.py
+│   ├── image_providers/     # Native AI image providers
 │   ├── backends/
 │   │   ├── __init__.py               # AssemblerBackend + SubtitleBackend protocols
-│   │   ├── ffmpeg_subtitle_backend.py # SubtitleBackend implementation using ffmpeg/ASS
-│   │   └── lingo_assembler_backend.py
-│   ├── utils.py                     # shared pipeline helpers
-│   ├── lingo_utils.py
-│   └── config_loader.py
+│   │   ├── ffmpeg_subtitle_backend.py
+│   │   └── native_assembler_backend.py
+│   └── utils.py
 ├── tests/
-│   ├── __init__.py
-│   ├── conftest.py
-│   ├── test_schema.py
-│   ├── test_adapters.py
-│   ├── test_subtitle_renderer.py
-│   └── test_orchestrator.py
 ├── output/                    # Generated videos (gitignored)
-├── run_test_video.py
-├── Initial_prompt.md
-├── ARCH_TO_DO.md
-├── CHANGELOG.md
 ├── README.md
-├── ROADMAP.md
+├── ASSETS_GUIDE.md           # This guide!
 └── requirements.txt
 ```
 
----
-
-## Lingo_PERSONAS Integration (Optional)
-
-Lingo_PERSONAS is an optional dependency. The project runs fully standalone without it.
-
-- **TTS**: Runs independently via `edge_tts` — no Lingo involvement
-- **Image Generation**: Uses `FootageGeneratorV2` (Lingo) when available — provider priority: Cloudflare Workers AI → SiliconFlow → Pollinations (blocked on VPS IPs) → HuggingFace → Picsum fallback → Pillow placeholders. Credentials are read from `.env` automatically.
-- **Video Assembly**: Uses `LingoAssemblerBackend` (Lingo) when available, falls back to a local moviepy implementation
-
-To enable Lingo integration, ensure the `Lingo_PERSONAS` package is on the Python path. The `lingo_utils.py` module handles path injection automatically.

@@ -1,43 +1,80 @@
 # Troubleshooting
 
+## Image generation hangs on cloud infrastructure (AWS / VPS)
 
+### Síntomas
 
-## Picsum images don't match my prompts
+El pipeline se queda bloqueado en la fase de generación de imágenes, con el último log repitiendo:
 
-**Symptom:** The generated images are consistent across runs but have nothing to do with the text prompts (e.g., a prompt for "a classroom" returns a photo of a mountain).
-
-**Cause:** Picsum is a stock photo library, not an AI generator. Its seed endpoint (`picsum.photos/seed/{seed}/...`) is deterministic but not semantic — it assigns a random photo to a seed string without understanding what the text means.
-
-**Fix:** Picsum is now only used as a last resort fallback or when `image_engine: picsum` is explicitly set. By default the pipeline goes straight to Cloudflare Workers AI → SiliconFlow → Pollinations → HuggingFace. Make sure your `.env` has at least one of those keys configured. See the Pollinations 402 entry below for provider details.
-
-
-## Pollinations returns HTTP 402 on VPS / cloud servers
-
-**Symptom:** All image generation attempts via Pollinations fail with `HTTP 402`, and the pipeline falls back to Picsum (which returns unrelated random photos).
-
-**Cause:** Pollinations.ai blocks requests from datacenter and VPS IP ranges (AWS, DigitalOcean, Hetzner, etc.) with a `402 Payment Required` response. This affects all server-side usage regardless of URL parameters or model. Confirmed via direct `curl` — every Pollinations endpoint returns 402 from a cloud IP.
-
-**Current behavior:** Pollinations is still in the provider chain but will be skipped automatically when it returns 402. The pipeline continues to the next available provider.
-
-**Provider priority (as of v0.3.0):**
-1. Cloudflare Workers AI — works on all IPs, requires `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN`
-2. SiliconFlow — works on all IPs, requires `SILICONFLOW_API_KEY`
-3. Pollinations — free, no key, but **blocked on VPS/datacenter IPs**
-4. HuggingFace — requires `HUGGINGFACE_API_KEY`
-5. Picsum — last resort, random photos (not prompt-matched)
-
-**Fix:** Add at least one of the following to your `.env`:
-
-```env
-# Option 1 — Cloudflare (recommended, fast)
-CLOUDFLARE_ACCOUNT_ID=your_account_id
-CLOUDFLARE_API_TOKEN=your_api_token
-
-# Option 2 — SiliconFlow
-SILICONFLOW_API_KEY=your_key
-
-# Option 3 — HuggingFace
-HUGGINGFACE_API_KEY=your_key
+```
+INFO  src.image_providers.manager: [1/9] Generating: ...
+INFO  src.image_providers.manager: Trying provider 1/3: pollinations...
 ```
 
-Then set `image_engine: siliconflow` (or `cloudflare`) in your config yaml to skip straight to the working provider without waiting for Pollinations to fail first.
+...durante varios minutos sin avanzar, o bien:
+
+```
+WARNING src.image_providers.manager: pollinations timed out after 120.0s — trying next provider.
+```
+
+### Causa raíz
+
+El problema tiene dos capas:
+
+**1. Pollinations bloqueado por detección de cloud (seguridad prevista)**
+
+`src/image_providers/cloud_detection.py` detecta la IP de la máquina y, en infraestructuras donde Pollinations suele bloquear cloud IPs, lo marca como proveedor baneado. El registro `CLOUD_PROVIDER_BANS` actualmente contiene:
+
+- `CloudProvider.AWS: ["pollinations"]`
+- `CloudProvider.DIGITALOCEAN: ["pollinations"]`
+- `CloudProvider.HETZNER: ["pollinations"]`
+
+Esto evita intentar una petición que probablemente fallará por IP-block y permite el cambio inmediato a otro proveedor.
+
+Si ese registro se vacía accidentalmente, esta protección queda desactivada y la aplicación vuelve a intentar proveedores bloqueados.
+
+**2. Lentitud variable de proveedores externos**
+
+Tanto Cloudflare Workers AI como Pollinations pueden tardar entre 10 y 120+ segundos por imagen dependiendo de la carga del servicio en ese momento. Cuando el proveedor primario (Cloudflare) está lento, el pipeline esperaba el timeout completo antes de hacer fallback. Con resoluciones altas (1920×1080) y prompts complejos, esto se multiplica por cada imagen del batch.
+
+El manager ahora envuelve cada llamada en un `ThreadPoolExecutor` con `per_image_timeout=120s`, lo que hace que el fallback se intente tan pronto como el timeout expire. Sin embargo, dado que Python no puede forzar la terminación de hilos en ejecución, los subprocesos bloqueados pueden seguir vivos en segundo plano; por eso es importante que los proveedores también establezcan límites de tiempo de socket y petición en su propia lógica.
+
+**3. Lock de proceso huérfano**
+
+Cuando el proceso se interrumpe (Ctrl+C, kill, o error fatal), el archivo `.generation.lock` puede quedar sin eliminarse. En el siguiente intento, `main.py` lee el PID del lock, verifica si el proceso sigue vivo, y si el PID fue reasignado a otro proceso del sistema, bloquea la ejecución con:
+
+```
+ERROR A video generation is already running for output directory ...
+```
+
+### Solución manual
+
+Si el pipeline no arranca y aparece el error de lock, eliminar el archivo manualmente:
+
+```bash
+rm -f output/logs/.generation.lock
+```
+
+### Configuración recomendada para entornos cloud
+
+Para evitar depender de Cloudflare cuando está lento, forzar Pollinations directamente en el config:
+
+```yaml
+image_engine: "pollinations"
+```
+
+Esto mueve a Pollinations al primer lugar de la lista de proveedores y evita el timeout de 120s de Cloudflare antes del fallback.
+
+### Workaround si ambos proveedores están lentos
+
+Si ni Cloudflare ni Pollinations responden en tiempo razonable, la alternativa es proporcionar las imágenes localmente:
+
+```yaml
+visual_assets:
+  asset_type: "image_sequence"
+  images:
+    - "assets/my_scene_01.jpg"
+    - "assets/my_scene_02.jpg"
+```
+
+Esto elimina completamente la dependencia de proveedores externos de imagen.

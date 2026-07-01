@@ -11,38 +11,86 @@ import os
 import re
 import time
 import logging
+import textwrap
+import warnings
 from pathlib import Path
 from typing import List, Optional
 from urllib.parse import quote
 
-from dotenv import load_dotenv
-load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=False)
-
 from src import config_loader
 from src.image_providers.manager import ProviderManager
+from src.image_providers.registry import get_provider_registry, auto_register_providers
 
 logger = logging.getLogger(__name__)
+
+# Global manager instance to persist provider health/failover state across calls (backward compatibility)
+_provider_manager: Optional[ProviderManager] = None
+
+
+def _get_provider_manager() -> ProviderManager:
+    """Get or create the global ProviderManager instance with auto-registered providers."""
+    global _provider_manager
+    if _provider_manager is None:
+        _provider_manager = ProviderManager()
+        # Auto-register all available providers based on credentials
+        auto_register_providers(_provider_manager)
+        # Log provider status for debugging
+        get_provider_registry().log_provider_status()
+    return _provider_manager
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
+from src.schema import VideoContext
+
 def generate_from_prompts(
-    prompts: List[str],
-    output_dir: str,
-    style: Optional[str] = None,
-    aspect_ratio: Optional[str] = None,
-    engine: Optional[str] = None,
-    width: Optional[int] = None,
-    height: Optional[int] = None,
+    *args,
+    **kwargs
 ) -> List[str]:
     """Generate one image per prompt and return a list of file paths.
 
-    Provider priority: Picsum (seeded, only if ``engine="picsum"``) →
-    Native ImageProviders → Pillow placeholders.
+    The preferred call style is keyword-based, for example:
+    generate_from_prompts(prompts=[...], output_dir="...", context=context)
+
+    Legacy positional calls that pass a VideoContext as the first argument are
+    still supported for compatibility, but they emit a DeprecationWarning.
     """
-    cfg = config_loader.image()
+    provider_manager = kwargs.pop("provider_manager", None)
+    
+    if args and isinstance(args[0], VideoContext):
+        warnings.warn(
+            "Passing VideoContext positionally to generate_from_prompts() is deprecated; use context=... instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        context = args[0]
+        prompts = args[1] if len(args) > 1 else kwargs.pop("prompts", None)
+        output_dir = args[2] if len(args) > 2 else kwargs.pop("output_dir", None)
+        style = args[3] if len(args) > 3 else kwargs.pop("style", None)
+        aspect_ratio = args[4] if len(args) > 4 else kwargs.pop("aspect_ratio", None)
+        engine = args[5] if len(args) > 5 else kwargs.pop("engine", None)
+        width = args[6] if len(args) > 6 else kwargs.pop("width", None)
+        height = args[7] if len(args) > 7 else kwargs.pop("height", None)
+        
+        cfg = context.merged_config.get("image", {})
+        vcfg = context.merged_config.get("video", {})
+        use_logger = context.logger
+    else:
+        context = None
+        prompts = args[0] if len(args) > 0 else kwargs.pop("prompts", None)
+        output_dir = args[1] if len(args) > 1 else kwargs.pop("output_dir", None)
+        style = args[2] if len(args) > 2 else kwargs.pop("style", None)
+        aspect_ratio = args[3] if len(args) > 3 else kwargs.pop("aspect_ratio", None)
+        engine = args[4] if len(args) > 4 else kwargs.pop("engine", None)
+        width = args[5] if len(args) > 5 else kwargs.pop("width", None)
+        height = args[6] if len(args) > 6 else kwargs.pop("height", None)
+        
+        cfg = config_loader.image()
+        vcfg = config_loader.video()
+        use_logger = logger
+        
     if style is None:
         style = cfg.get("style", "photorealistic")
     if aspect_ratio is None:
@@ -50,8 +98,14 @@ def generate_from_prompts(
     if engine is None:
         engine = cfg.get("engine")
 
+    if engine in {"unsplash", "pexels"}:
+        raise ValueError(
+            f"Unsupported image engine '{engine}'. "
+            "Unsplash and Pexels are not implemented yet. "
+            "Use cloudflare, siliconflow, pollinations, huggingface, or picsum."
+        )
+
     if width is None or height is None:
-        vcfg = config_loader.video()
         base_w = vcfg.get("width", 1080)
         base_h = vcfg.get("height", 1920)
         _w, _h = _dimensions_for_aspect(aspect_ratio, base_w, base_h)
@@ -62,42 +116,56 @@ def generate_from_prompts(
 
     os.makedirs(output_dir, exist_ok=True)
 
-    # 1. Picsum — only when explicitly requested
     if engine == "picsum":
         stock_dir = os.path.join(output_dir, "stock")
         os.makedirs(stock_dir, exist_ok=True)
-        paths = _picsum_batch(prompts, stock_dir, width, height)
+        paths = _picsum_batch(prompts, stock_dir, width, height, use_logger)
         if paths:
             return paths
-        logger.warning("Picsum failed or returned partial results — trying next provider.")
+        use_logger.warning("Picsum failed or returned partial results — trying next provider.")
 
-    # 2. Native Image Generation
     gen_dir = os.path.join(output_dir, "generated")
     os.makedirs(gen_dir, exist_ok=True)
-    native_paths = _try_native_image_generation(prompts, gen_dir, style, width, height, engine)
+    native_paths = _try_native_image_generation(prompts, gen_dir, style, width, height, engine, use_logger, provider_manager)
     if native_paths:
         return native_paths
 
-    # 3. Pillow placeholders
-    logger.warning("Native image generation failed or unavailable — using Pillow placeholder images.")
-    return _generate_placeholder_images(prompts, gen_dir, width=width, height=height)
+    use_logger.warning("Native image generation failed or unavailable — using Pillow placeholder images.")
+    return _generate_placeholder_images(prompts, gen_dir, width=width, height=height, vcfg=vcfg, log=use_logger)
 
 
-def copy_provided_images(image_paths: List[str], output_dir: str) -> List[str]:
+def copy_provided_images(*args, **kwargs) -> List[str]:
     """Validate and copy user-provided visual files into the workspace.
 
-    Despite the name (kept for backward compatibility), this performs no
-    image-specific validation — it works for any local file, including
-    video clips used via ``VisualAssetType.MEDIA_SEQUENCE``. Prefer the
-    ``copy_provided_media`` alias in new code for clarity.
+    The preferred call style is keyword-based, for example:
+    copy_provided_images(image_paths=[...], output_dir="...", context=context)
+
+    Legacy positional calls that pass a VideoContext as the first argument are
+    still supported for compatibility, but they emit a DeprecationWarning.
     """
+    if args and isinstance(args[0], VideoContext):
+        warnings.warn(
+            "Passing VideoContext positionally to copy_provided_images() is deprecated; use context=... instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        context = args[0]
+        image_paths = args[1] if len(args) > 1 else kwargs.pop("image_paths", None)
+        output_dir = args[2] if len(args) > 2 else kwargs.pop("output_dir", None)
+        use_logger = context.logger
+    else:
+        context = None
+        image_paths = args[0] if len(args) > 0 else kwargs.pop("image_paths", None)
+        output_dir = args[1] if len(args) > 1 else kwargs.pop("output_dir", None)
+        use_logger = logger
+        
     import shutil
     cached_dir = os.path.join(output_dir, "cached")
     os.makedirs(cached_dir, exist_ok=True)
     copied: List[str] = []
     for src in image_paths:
         if not os.path.isfile(src):
-            logger.warning("Visual asset not found, skipping: %s", src)
+            use_logger.warning("Visual asset not found, skipping: %s", src)
             continue
         dst = os.path.join(cached_dir, os.path.basename(src))
         shutil.copy2(src, dst)
@@ -140,40 +208,27 @@ def _try_native_image_generation(
     width: int,
     height: int,
     preferred_engine: Optional[str] = None,
+    log = logger,
+    provider_manager: Optional[ProviderManager] = None,
 ) -> Optional[List[str]]:
-    """Use the local ProviderManager to generate images with automatic failover."""
-    manager = ProviderManager(output_dir=output_dir)
+    """Use the provided ProviderManager (or global one if not provided) to generate images with automatic failover."""
+    manager = provider_manager if provider_manager is not None else _get_provider_manager()
     
-    # Configure providers from environment/config
-    # 1. Cloudflare
-    manager.add_cloudflare(
-        account_id=os.environ.get('CLOUDFLARE_ACCOUNT_ID'),
-        api_token=os.environ.get('CLOUDFLARE_API_TOKEN')
-    )
+    manager.output_dir = Path(output_dir)
+    manager.output_dir.mkdir(parents=True, exist_ok=True)
     
-    # 2. SiliconFlow
-    manager.add_siliconflow(api_key=os.environ.get('SILICONFLOW_API_KEY'))
-    
-    # 3. Pollinations (free)
-    manager.add_pollinations()
-    
-    # 4. HuggingFace
-    manager.add_huggingface_flux(api_key=os.environ.get('HUGGINGFACE_API_KEY'))
-    
-    # 5. Picsum (last resort fallback)
-    manager.add_picsum()
-    
-    # Reorder if an engine is preferred
     if preferred_engine:
+        has_preferred = any(p.name == preferred_engine for p in manager.providers)
+        if not has_preferred:
+            log.warning("Preferred engine '%s' not found among configured providers.", preferred_engine)
         manager.providers.sort(key=lambda p: 0 if p.name == preferred_engine else 1)
 
     results = manager.generate_images_batch(prompts, width=width, height=height, style=style)
     
-    # Return paths only if ALL prompts succeeded
     if all(r.success for r in results):
         return [r.image_path for r in results if r.image_path]
     
-    logger.warning("Native image generation batch incomplete.")
+    log.warning("Native image generation batch incomplete.")
     return None
 
 
@@ -181,12 +236,15 @@ def _try_native_image_generation(
 # Picsum seeded by prompt keywords
 # ---------------------------------------------------------------------------
 
-def _prompt_to_seed(prompt: str) -> str:
+def _prompt_to_seed(prompt: str, index: Optional[int] = None) -> str:
     """Extract the first few meaningful words from a prompt to use as a Picsum seed."""
     stopwords = {"a", "an", "the", "at", "in", "on", "of", "and", "with", "for", "to", "is"}
     words = re.sub(r"[^a-z0-9 ]", "", prompt.lower()).split()
     keywords = [w for w in words if w not in stopwords][:4]
-    return "-".join(keywords) if keywords else "photo"
+    base = "-".join(keywords) if keywords else "photo"
+    if index is not None:
+        return f"{base}-{index}"
+    return base
 
 
 def _picsum_batch(
@@ -194,6 +252,7 @@ def _picsum_batch(
     output_dir: str,
     width: int,
     height: int,
+    log = logger,
 ) -> List[str]:
     """Fetch one Picsum image per prompt using a keyword-derived seed."""
     import requests
@@ -202,9 +261,9 @@ def _picsum_batch(
     timeout = 30
 
     for idx, prompt in enumerate(prompts):
-        seed = _prompt_to_seed(prompt)
+        seed = _prompt_to_seed(prompt, idx)
         url  = f"https://picsum.photos/seed/{seed}/{width}/{height}.jpg"
-        logger.info("[%d/%d] Picsum seed='%s' — %s", idx + 1, len(prompts), seed, prompt[:60])
+        log.info("[%d/%d] Picsum seed='%s' — %s", idx + 1, len(prompts), seed, prompt[:60])
 
         try:
             response = requests.get(url, timeout=timeout, allow_redirects=True)
@@ -214,24 +273,24 @@ def _picsum_batch(
                 with open(file_path, "wb") as f:
                     f.write(response.content)
                 paths.append(file_path)
-                logger.info("  ✓ saved → %s", file_path)
+                log.info("  ✓ saved → %s", file_path)
             else:
-                logger.warning("  HTTP %d for seed '%s'", response.status_code, seed)
+                log.warning("  HTTP %d for seed '%s'", response.status_code, seed)
         except Exception as exc:
-            logger.warning("  failed for seed '%s': %s", seed, exc)
+            log.warning("  failed for seed '%s': %s", seed, exc)
 
         if idx < len(prompts) - 1:
             time.sleep(0.5)
 
     if len(paths) < len(prompts):
-        logger.warning(
+        log.warning(
             "Picsum batch incomplete: %d/%d images fetched — "
             "discarding partial results to maintain video synchronization.",
             len(paths), len(prompts),
         )
         return []
 
-    logger.info("Picsum batch: %d/%d images fetched successfully.", len(paths), len(prompts))
+    log.info("Picsum batch: %d/%d images fetched successfully.", len(paths), len(prompts))
     return paths
 
 
@@ -244,11 +303,14 @@ def _generate_placeholder_images(
     output_dir: str,
     width: Optional[int] = None,
     height: Optional[int] = None,
+    vcfg = None,
+    log = logger,
 ) -> List[str]:
     """Create gradient placeholder images with prompt text overlay."""
     from PIL import Image, ImageDraw, ImageFont
 
-    vcfg = config_loader.video()
+    if vcfg is None:
+        vcfg = config_loader.video()
     if width is None:
         width = vcfg.get("width", 1080)
     if height is None:
@@ -284,5 +346,3 @@ def _generate_placeholder_images(
         paths.append(file_path)
 
     return paths
-
-import textwrap

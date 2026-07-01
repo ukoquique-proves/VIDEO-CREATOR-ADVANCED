@@ -1,7 +1,7 @@
-title: "Picsum Demo Video"
+title: "VideoCreation Full Pipeline Demo"
 speech_content: >
   Welcome to VideoCreation. This short demo shows the pipeline working end to end.
-  Each scene uses a different photo, matched to the topic being discussed.
+  Each scene uses a different AI-generated image, matched to the topic being discussed.
   The audio is synthesized from text, and subtitles are burned directly onto the frames.
 visual_assets:
   asset_type: "text_prompts"

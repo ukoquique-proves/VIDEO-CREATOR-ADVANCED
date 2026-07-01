@@ -3,26 +3,25 @@ Este proyecto, VideoCreation , es una plataforma configurable para la generació
 A continuación, presento un resumen detallado de los componentes clave y el flujo de trabajo:
 
 ### Arquitectura General
-El corazón del sistema es el orchestrator.py , que coordina un pipeline de 5 pasos delegando cada tarea a adaptadores especializados:
+El corazón del sistema es el orchestrator.py , que coordina un pipeline de 4 pasos delegando cada tarea a adaptadores especializados:
 
 1. TTS (Audio) : Convierte el texto en voz.
 2. Visuals (Imágenes) : Prepara las imágenes (ya sean archivos locales o generadas por IA).
-3. Modifications : (Opcional) Aplica cambios a las imágenes mediante IA.
-4. Subtitles : (Opcional) Genera los tiempos de los subtítulos basándose en el audio.
-5. Assembly : Une el audio, las imágenes y los subtítulos en el archivo de video final.
+3. Subtitles : (Opcional) Genera los tiempos de los subtítulos basándose en el audio.
+4. Assembly : Une el audio, las imágenes y los subtítulos en el archivo de video final.
+
+> ⚠️ **Image Modification Not Supported**: `image_modification_instructions` is reserved for future use and is **intentionally not implemented in this version**. The schema validates and rejects any attempts to use this field with a clear error message. Do not include this field in your configuration — it will cause validation to fail.
+
 ### Componentes Principales
 - schema.py : Define los modelos de datos (usando Pydantic) para la configuración del video, incluyendo el título, contenido del habla, activos visuales, orientación (vertical/horizontal) y proveedores.
 - orchestrator.py : La clase VideoOrchestrator gestiona el ciclo de vida de la creación del video y el manejo de directorios de trabajo (workspaces).
-- tts_adapter.py : Utiliza principalmente edge-tts para generar audio de alta calidad de forma gratuita, con soporte para múltiples idiomas.
+- tts_adapter.py : Utiliza principalmente Kokoro para generar audio de alta calidad de forma local y gratuita, con soporte para múltiples idiomas; incluye edge-tts y otros fallbacks cuando Kokoro no está disponible.
 - image_adapter.py : Implementa una estrategia de "fallback" para imágenes:
-- image_adapter.py : Implementa una estrategia de "fallback" para imágenes:
-  - Cuando el operador habilita el soporte legado (`USE_LINGO`), intenta usar
-    Lingo_PERSONAS (FootageGeneratorV2) como una opción más; de lo contrario
-    utiliza proveedores nativos (Cloudflare, SiliconFlow, Pollinations, HF).
+  - Utiliza proveedores nativos (Cloudflare, SiliconFlow, Pollinations, HF).
   - Picsum se usa solo cuando `engine="picsum"` se solicita explícitamente.
-  - Finalmente, crea placeholders con Pillow si el motor Lingo no está disponible.
+  - Finalmente, crea placeholders con Pillow si ningún proveedor nativo está disponible.
 - subtitle_renderer.py : Un componente especializado que quema (burn-in) subtítulos en el video usando ffmpeg/ASS para mayor precisión. El renderizado de muestra con Pillow se mantiene solo como helper de pruebas, no como flujo de producción.
-- assembler_adapter.py : Utiliza el backend LingoAssemblerBackend para ensamblar el video, o cae en una implementación local de moviepy si el motor externo no está disponible.
+- assembler_adapter.py : Utiliza un backend nativo de MoviePy para ensamblar el video, con una implementación local totalmente desacoplada.
 ### Interfaces de Usuario
 El proyecto ofrece dos formas principales de interacción:
 

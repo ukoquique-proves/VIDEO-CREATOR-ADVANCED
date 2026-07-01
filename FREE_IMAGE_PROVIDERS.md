@@ -1,3 +1,14 @@
+These notes are aspirational: `unsplash`, `pexels`, and `pixabay` are not currently implemented in the native provider library.
+
+At the moment, the supported image engines are:
+- `cloudflare`
+- `siliconflow`
+- `pollinations`
+- `huggingface`
+- `picsum`
+
+If you configure `image_engine: "unsplash"` or `image_engine: "pexels"`, the application will reject it because those providers are not yet wired into the codebase.
+
 To get genuinely relevant stock photos from prompts, we need a searchable API. The realistic free options:
 
 Unsplash API — keyword search, returns topically relevant photos, free with a registered app (takes 2 minutes to get a key at unsplash.com/developers)

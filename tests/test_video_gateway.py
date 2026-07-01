@@ -16,7 +16,7 @@ def test_orchestrator_accepts_gateway_and_uses_it(tmp_path):
     out_dir.mkdir()
 
     # Create dummy callables
-    def dummy_tts(text, output_path, language=None, method=None, rate=None):
+    def dummy_tts(text, output_path, language=None, method=None, rate=None, voice=None):
         with open(output_path, "wb") as f:
             f.write(b"audio")
 
@@ -53,3 +53,18 @@ def test_orchestrator_accepts_gateway_and_uses_it(tmp_path):
     result = orch.create_video(cfg)
     assert result["output_path"]
     assert os.path.exists(result["output_path"]) is True
+
+
+def test_partial_gateway_emits_warning(caplog, tmp_path):
+    gateway = VideoGateway(
+        tts=lambda *args, **kwargs: None,
+        generate_from_prompts=None,
+        copy_provided_images=None,
+        modify_images=None,
+        assemble_video=None,
+    )
+
+    with caplog.at_level("WARNING"):
+        _ = gateway
+
+    assert "VideoGateway provided partially" in caplog.text

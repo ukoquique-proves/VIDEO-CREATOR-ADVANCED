@@ -1,0 +1,15 @@
+title: "Prueba de Voz Dulce Masculina en Español"
+language: es
+tts_backend: edge_tts
+tts_voice: es-MX-JorgeNeural
+tts_rate: "+0%"
+speech_content: |
+  ¡Hola! Esta es una prueba de voz dulce masculina en español mexicano usando Jorge. Espero que te guste.
+visual_assets:
+  asset_type: "text_prompts"
+  prompts:
+    - "Un atardecer en el desierto del norte de México"
+subtitles_enabled: true
+image_engine: picsum
+output_format: "mp4"
+orientation: "vertical"

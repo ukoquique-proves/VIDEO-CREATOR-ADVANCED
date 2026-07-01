@@ -61,12 +61,12 @@ Each unit test should:
 def test_engine_picsum_forces_picsum(self, tmp_path):
     """Passing engine='picsum' should force Picsum when explicitly requested."""
     out_dir = str(tmp_path / "imgs")
-    with patch.object(image_adapter, "_picsum_batch", return_value=["fake.jpg"]) as mock_picsum, \
-         patch.object(image_adapter, "_try_footage_generator") as mock_lingo:
+        with patch.object(image_adapter, "_picsum_batch", return_value=["fake.jpg"]) as mock_picsum, \
+            patch.object(image_adapter, "_try_footage_generator") as mock_generator:
         paths = image_adapter.generate_from_prompts(["test"], out_dir, engine="picsum")
         
     mock_picsum.assert_called_once()
-    mock_lingo.assert_not_called()
+    mock_generator.assert_not_called()
     assert paths == ["fake.jpg"]
 ```
 
@@ -90,11 +90,7 @@ Tests in `tests/` create actual videos with mocked TTS/image generation but real
 - **Image modification** — verifies instruction string handling
 - **Subtitle renderer** — frame size, descender pixel check, text wrapping, empty text
 
-Note: Lingo_PERSONAS vendor-specific integration tests are skipped by default. To run
-those tests and exercises that import the vendored code, set the environment
-variable `USE_LINGO` to a truthy value (``1``, ``true``, ``yes``) and ensure
-`LINGO_ROOT` is set if the vendor files live outside `vendor/`. The main test
-suite remains fully runnable and offline without enabling legacy Lingo support.
+The main test suite remains fully runnable and offline without any legacy vendor dependencies.
 
 ### Creating New Integration Tests
 
@@ -183,9 +179,8 @@ The VideoCreation codebase follows a **layered architecture**:
 │ (backends/__init__.py)      │                 │
 ├─────────────────────────────┤                 │
 │   Implementation Layer      │                 │
-│ (lingo_assembler_backend,   │                 │
-│  ffmpeg_subtitle_backend,   ├─────────────────┘
-│  moviepy fallback)          │
+│ (ffmpeg_subtitle_backend,   │                 │
+│  moviepy fallback)          ├─────────────────┘
 └─────────────────────────────┘
 ```
 
@@ -208,11 +203,9 @@ python -c "import src; print('✓ No circular imports')"
 # Verify all backends implement protocols
 python -c "
 from src.backends import AssemblerBackend, SubtitleBackend
-from src.backends.lingo_assembler_backend import LingoAssemblerBackend
 from src.backends.ffmpeg_subtitle_backend import FFmpegSubtitleBackend
 from moviepy import AudioFileClip
 
-assert isinstance(LingoAssemblerBackend(), AssemblerBackend), 'LingoAssemblerBackend does not implement AssemblerBackend'
 assert isinstance(FFmpegSubtitleBackend(), SubtitleBackend), 'FFmpegSubtitleBackend does not implement SubtitleBackend'
 print('✓ All backends implement correct protocols')
 "

@@ -1,0 +1,18 @@
+title: "Escenas Video"
+speech_audio: "assets/escenas/audio/speech_slow (mp3cut.net).mp3"
+visual_assets:
+  asset_type: media_sequence
+  images:
+    - "assets/escenas/visuals/escena2.mp4"
+    - "assets/escenas/visuals/escena3.mp4"
+    - "assets/escenas/visuals/escena4.mp4"
+    - "assets/escenas/visuals/escena5.mp4"
+    - "assets/escenas/visuals/escena6.mp4"
+    - "assets/escenas/visuals/escena7.mp4"
+    - "assets/escenas/visuals/escena8.mp4"
+    - "assets/escenas/visuals/escena9.mp4"
+    - "assets/escenas/visuals/imagen1.png"
+orientation: horizontal
+output_format: mp4
+language: en
+subtitles_enabled: false

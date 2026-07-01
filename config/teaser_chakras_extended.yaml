@@ -1,0 +1,44 @@
+title: "El Silencio de los Chakras - Extended Preview"
+language: "es"
+tts_backend: "edge_tts"
+tts_voice: "es-MX-JorgeNeural"
+tts_rate: "-4%"
+orientation: "horizontal"
+output_format: "mp4"
+subtitles_enabled: true
+image_engine: "pollinations"
+image_style: "cinematic film still, ultra-detailed, anamorphic lens flare, psychological thriller atmosphere, 8k resolution"
+
+speech_content: |
+  En la era del ruido digital, el verdadero peligro no viene del cielo... viene de nuestra propia necesidad de ser vistos. Adrián lo quería todo: métricas, millones de seguidores, validación virtual. Y convirtió el misterio en su mayor negocio.
+  Pero hay fuerzas ancestrales que no entienden de pantallas. Encuentros cercanos que agotan la vida, que quiebran el alma y apagan la energía interior.
+  Mientras el mundo se obsesiona con el destello de las luces en la noche, Daniel ha elegido el camino opuesto: el silencio, el refugio de la montaña y el control soberano de sus chakras.
+  A lo largo de esta historia, asistiremos al colapso de dos mundos opuestos. Veremos la desesperación en primer plano: escenas de absoluta tensión donde Adrián, atrapado en la penumbra de su estudio, sufre hiperventilaciones severas mientras los números de su transmisión en vivo no paran de subir, devorando su cordura.
+  En contraste, la película nos llevará al corazón de un drama familiar íntimo y cotidiano, donde Daniel lucha por mantener una fachada de normalidad, cocinando con sus hijos en una humilde cocina rural, mientras oculta un insomnio crónico provocado por el desgaste energético de los avistamientos.
+  Veremos el clímax donde la tecnología y la espiritualidad chocan: el momento exacto en que Daniel, guiado por conocimientos de ufología clásica y meditación oriental, logra cerrar su chakra corona ante una luz alienígena incandescente, decretando su soberanía personal en un grito silencioso.
+  Dos realidades paralelas. Un infierno atrapado en las redes... y una victoria silenciosa que solo se escucha en los latidos del corazón.
+  El Silencio de los Chakras.
+  Muy pronto a disposición.
+
+visual_assets:
+  asset_type: "image_sequence"
+  images:
+    - "output/El_Silencio_de_los_Chakras_-_Extended_Preview/visuals/generated/cloudflare_1782746353_3502.png"
+    - "output/El_Silencio_de_los_Chakras_-_Extended_Preview/visuals/generated/cloudflare_1782746356_2431.png"
+    - "output/El_Silencio_de_los_Chakras_-_Extended_Preview/visuals/generated/cloudflare_1782746359_8394.png"
+    - "output/El_Silencio_de_los_Chakras_-_Extended_Preview/visuals/generated/cloudflare_1782746363_647.png"
+    - "output/El_Silencio_de_los_Chakras_-_Extended_Preview/visuals/generated/cloudflare_1782746367_1519.png"
+    - "output/El_Silencio_de_los_Chakras_-_Extended_Preview/visuals/generated/cloudflare_1782746370_6638.png"
+    - "output/El_Silencio_de_los_Chakras_-_Extended_Preview/visuals/generated/cloudflare_1782746373_1286.png"
+    - "output/El_Silencio_de_los_Chakras_-_Extended_Preview/visuals/generated/cloudflare_1782746378_7815.png"
+    - "output/El_Silencio_de_los_Chakras_-_Extended_Preview/visuals/generated/cloudflare_1782746381_3663.png"
+  prompt_speeches:
+    - "En la era del ruido digital, el verdadero peligro no viene del cielo... viene de nuestra propia necesidad de ser vistos. Adrián lo quería todo: métricas, millones de seguidores, validación virtual. Y convirtió el misterio en su mayor negocio."
+    - "Pero hay fuerzas ancestrales que no entienden de pantallas. Encuentros cercanos que agotan la vida, que quiebran el alma y apagan la energía interior."
+    - "Mientras el mundo se obsesiona con el destello de las luces en la noche, Daniel ha elegido el camino opuesto: el silencio, el refugio de la montaña y el control soberano de sus chakras."
+    - "A lo largo de esta historia, asistiremos al colapso de dos mundos opuestos. Veremos la desesperación en primer plano: escenas de absoluta tensión donde Adrián, atrapado en la penumbra de su estudio, sufre hiperventilaciones severas mientras los números de su transmisión en vivo no paran de subir, devorando su cordura."
+    - "En contraste, la película nos llevará al corazón de un drama familiar íntimo y cotidiano, donde Daniel lucha por mantener una fachada de normalidad, cocinando con sus hijos en una humilde cocina rural, mientras oculta un insomnio crónico provocado por el desgaste energético de los avistamientos."
+    - "Veremos el clímax donde la tecnología y la espiritualidad chocan: el momento exacto en que Daniel, guiado por conocimientos de ufología clásica y meditación oriental, logra cerrar su chakra corona ante una luz alienígena incandescente, decretando su soberanía personal en un grito silencioso."
+    - "Dos realidades paralelas. Un infierno atrapado en las redes... y una victoria silenciosa que solo se escucha en los latidos del corazón."
+    - "El Silencio de los Chakras."
+    - "Muy pronto a disposición."

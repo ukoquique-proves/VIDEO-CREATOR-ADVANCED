@@ -1,15 +1,23 @@
 """
-Integration tests for the VideoOrchestrator.
+Behavior tests for the VideoOrchestrator (mocked, fast-running).
 
-Each test exercises a distinct creation flow as required by the project spec:
-  1. Minimal video (images + speech, no subtitles)
-  2. AI image generation from text prompts
-  3. Video with subtitles enabled
-  4. Video with background music
-  5. Custom output format (.webm)
+These tests use mocks for all external adapters (TTS, image generation, assembly).
+They verify the orchestration logic, call sequences, and configuration propagation
+without creating actual video files.
 
-All external calls (TTS, AI image gen, video assembly) are mocked so tests
-run fast and without network access.
+For end-to-end tests that create real video files, see test_video_creation_integration.py.
+
+Test Coverage:
+  1. Context propagation — verify VideoContext is passed to adapters
+  2. Orchestration sequences — verify the correct adapters are called in order
+  3. Configuration handling — verify merged config is used correctly
+  4. Subtitle burning — verify subtitles are burned when enabled
+  5. Background music integration — verify music file path is passed through
+
+All external calls (TTS, AI image gen, video assembly) are mocked to ensure:
+  - Tests run offline and fast
+  - No external API calls or file I/O overhead
+  - Deterministic behavior for regression testing
 """
 
 import os
@@ -19,15 +27,16 @@ from unittest.mock import patch, MagicMock
 from pathlib import Path
 
 from src import image_adapter
-from src.image_adapter import modify_images as _real_modify_images
 from src.schema import (
     VideoConfiguration,
     VisualAssetConfig,
     VisualAssetType,
     OutputFormat,
+    VideoContext,
 )
 from src.orchestrator import VideoOrchestrator
 from src.utils import sanitize_filename, sanitize_filename_preserve_extension
+from src.video_gateway import VideoGateway
 
 
 # --------------------------------------------------------------------------- #
@@ -53,9 +62,16 @@ def _mock_generate_from_prompts(prompts, output_dir, **kwargs):
     return paths
 
 
-def _mock_copy_images(image_paths, output_dir):
-    """Copy images by creating stubs."""
+def _mock_copy_images(*args, **kwargs):
+    """Copy images by creating stubs. Supports both old and new calling styles."""
     import shutil
+    # Handle both call styles
+    if len(args) == 3 and isinstance(args[0], object):  # context, image_paths, output_dir
+        image_paths = args[1]
+        output_dir = args[2]
+    else:  # image_paths, output_dir
+        image_paths = args[0] if len(args) > 0 else kwargs.get("image_paths")
+        output_dir = args[1] if len(args) > 1 else kwargs.get("output_dir")
     os.makedirs(os.path.join(output_dir, "cached"), exist_ok=True)
     copied = []
     for src in image_paths:
@@ -102,17 +118,23 @@ def _patch_adapters():
         patch("src.orchestrator.tts_adapter.generate_speech", side_effect=_mock_generate_speech),
         patch("src.orchestrator.image_adapter.generate_from_prompts", side_effect=_mock_generate_from_prompts) as mock_gen,
         patch("src.orchestrator.image_adapter.copy_provided_images", side_effect=_mock_copy_images),
-        patch("src.orchestrator.image_adapter.modify_images", side_effect=lambda paths, _instr: paths) as mock_modify,
         patch("src.orchestrator.assembler_adapter.assemble_video", side_effect=_mock_assemble_video) as mock_assemble,
-        patch("src.orchestrator.FFmpegSubtitleBackend", return_value=mock_subtitle_backend),
+        patch("src.backends.ffmpeg_subtitle_backend.FFmpegSubtitleBackend", return_value=mock_subtitle_backend),
     ):
         yield {
-            "modify_images": mock_modify,
             "generate_from_prompts": mock_gen,
             "assemble_video": mock_assemble,
             "subtitle_backend": mock_subtitle_backend,
         }
 
+class TestVideoGatewayIntegration:
+    def test_gateway_subtitle_backend_is_preserved(self):
+        mock_backend = MagicMock()
+        gateway = VideoGateway(subtitle_backend=mock_backend)
+
+        orch = VideoOrchestrator(output_dir="/tmp", gateway=gateway)
+
+        assert orch._subtitle_backend is mock_backend
 
 # --------------------------------------------------------------------------- #
 # Test Flows
@@ -120,6 +142,25 @@ def _patch_adapters():
 
 class TestMinimalVideo:
     """Flow 1: Minimal video — title + speech + 1 image, no subtitles, mp4."""
+
+    def test_tts_receives_context_for_merged_config(self, sample_images, tmp_output_dir):
+        orch = VideoOrchestrator(output_dir=tmp_output_dir)
+        cfg = VideoConfiguration(
+            title="Merged Config",
+            speech_content="Check merged config propagation.",
+            visual_assets=VisualAssetConfig(
+                asset_type=VisualAssetType.IMAGE_SEQUENCE,
+                images=sample_images[:1],
+            ),
+        )
+
+        with patch("src.orchestrator.tts_adapter.generate_speech") as mock_tts:
+            mock_tts.return_value = str(Path(tmp_output_dir) / "speech.mp3")
+            orch.create_video(cfg)
+
+        assert mock_tts.call_count >= 1
+        first_call = mock_tts.call_args_list[0]
+        assert isinstance(first_call.kwargs.get("context"), VideoContext)
 
     def test_minimal_video(self, sample_images, tmp_output_dir):
         orch = VideoOrchestrator(output_dir=tmp_output_dir)
@@ -236,10 +277,9 @@ class TestWithBackgroundMusic:
                 asset_type=VisualAssetType.IMAGE_SEQUENCE,
                 images=sample_images,
             ),
-            uploaded_background_music={Path(sample_audio).name: audio_bytes},
         )
 
-        result = orch.create_video(cfg)
+        result = orch.create_video(cfg, uploaded_background_music={Path(sample_audio).name: audio_bytes})
 
         assert os.path.isfile(result["output_path"])
         background_music_path = _patch_adapters["assemble_video"].call_args.kwargs["background_music"]
@@ -288,43 +328,20 @@ class TestCustomOutputFormat:
 
 
 class TestImageModification:
-    """image_modification_instructions must be forwarded to modify_images."""
+    """image_modification_instructions is unsupported and should be rejected at validation time."""
 
-    def test_modify_images_called_with_instructions(self, sample_images, tmp_output_dir, _patch_adapters):
-        orch = VideoOrchestrator(output_dir=tmp_output_dir)
-        cfg = VideoConfiguration(
-            title="Modified",
-            speech_content="Test image modification.",
-            visual_assets=VisualAssetConfig(
-                asset_type=VisualAssetType.IMAGE_SEQUENCE,
-                images=sample_images,
-            ),
-            image_modification_instructions="Apply sepia filter",
-        )
+    def test_image_modification_instructions_rejected(self, sample_images):
+        with pytest.raises(ValueError, match="image_modification_instructions is reserved for future use"):
+            VideoConfiguration(
+                title="Modified",
+                speech_content="Test image modification.",
+                visual_assets=VisualAssetConfig(
+                    asset_type=VisualAssetType.IMAGE_SEQUENCE,
+                    images=sample_images,
+                ),
+                image_modification_instructions="Apply sepia filter",
+            )
 
-        mock_modify = _patch_adapters["modify_images"]
-        mock_modify.side_effect = _real_modify_images
-
-        with pytest.raises(NotImplementedError, match="image_modification_instructions is not yet implemented"):
-            orch.create_video(cfg)
-
-        mock_modify.assert_called_once()
-        _args, _kwargs = mock_modify.call_args
-        assert _args[1] == "Apply sepia filter"
-
-    def test_modify_images_not_called_without_instructions(self, sample_images, tmp_output_dir, _patch_adapters):
-        orch = VideoOrchestrator(output_dir=tmp_output_dir)
-        cfg = VideoConfiguration(
-            title="No Modify",
-            speech_content="No modification instructions.",
-            visual_assets=VisualAssetConfig(
-                asset_type=VisualAssetType.IMAGE_SEQUENCE,
-                images=sample_images,
-            ),
-        )
-        orch.create_video(cfg)
-
-        _patch_adapters["modify_images"].assert_not_called()
 
 
 class TestSubtitleBurnIn:
@@ -428,7 +445,7 @@ class TestSanitization:
 
     def test_save_uploaded_images_strips_path_components(self, tmp_output_dir):
         orch = VideoOrchestrator(output_dir=tmp_output_dir)
-        bad_name = f"../../{uuid.uuid4().hex}.txt"
+        bad_name = f"../../{uuid.uuid4().hex}.png"
         outside_path = os.path.abspath(os.path.join(tmp_output_dir, bad_name))
         assert not os.path.exists(outside_path)
 
@@ -437,11 +454,10 @@ class TestSanitization:
             speech_content="Testing upload path sanitization.",
             visual_assets=VisualAssetConfig(
                 asset_type=VisualAssetType.IMAGE_SEQUENCE,
-                uploaded_images={bad_name: b"evil content"},
             ),
         )
 
-        result = orch.create_video(cfg)
+        result = orch.create_video(cfg, uploaded_images={bad_name: b"evil content"})
         assert os.path.isfile(result["output_path"])
         assert not os.path.exists(outside_path)
 

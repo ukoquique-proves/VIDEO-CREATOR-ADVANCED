@@ -1,0 +1,23 @@
+# Example: Save video to source folder instead of default output
+#
+# Set save_to_source_folder=True to save the generated video in the same 
+# directory as your source images, instead of in the default output/ directory.
+# This only applies when using local images (IMAGE_SEQUENCE or MEDIA_SEQUENCE).
+# For AI-generated images (TEXT_PROMPTS), the video always saves to output_dir.
+#
+# Run with:
+#   python -m src.main --config config/example_save_to_source_folder.yaml
+
+title: "My Video from Local Images"
+language: en
+speech_content: |
+  This video will be saved to the same folder as the source images.
+visual_assets:
+  asset_type: "image_sequence"
+  images:
+    - "/path/to/my/images/image1.jpg"
+    - "/path/to/my/images/image2.jpg"
+    - "/path/to/my/images/image3.jpg"
+subtitles_enabled: true
+output_format: "mp4"
+save_to_source_folder: true

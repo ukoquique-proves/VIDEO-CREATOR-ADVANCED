@@ -1,6 +1,9 @@
-from pydantic import BaseModel, Field
-from typing import Dict, List, Optional
+from pydantic import BaseModel, Field, field_validator
+from typing import Dict, List, Optional, Any
 from enum import Enum
+from dataclasses import dataclass
+from pathlib import Path
+import logging
 
 
 class OutputFormat(str, Enum):
@@ -18,6 +21,7 @@ class VisualAssetType(str, Enum):
 
 class TTSBackend(str, Enum):
     EDGE_TTS = "edge_tts"
+    KOKORO = "kokoro"
     AZURE = "azure"
     OPENAI = "openai"
     FISH_TTS = "fish_tts"
@@ -43,8 +47,6 @@ class ImageEngine(str, Enum):
     CLOUDFLARE   = "cloudflare"
     SILICONFLOW  = "siliconflow"
     PICSUM       = "picsum"
-    UNSPLASH     = "unsplash"
-    PEXELS       = "pexels"
 
 
 class VisualAssetConfig(BaseModel):
@@ -57,9 +59,14 @@ class VisualAssetConfig(BaseModel):
         default=None,
         description="Text prompts for AI image generation if using TEXT_PROMPTS",
     )
-    uploaded_images: Optional[Dict[str, bytes]] = Field(
+    prompt_speeches: Optional[List[str]] = Field(
         default=None,
-        description="In-memory image uploads keyed by filename (used by the UI)",
+        description=(
+            "Per-scene speech text, one entry per prompt/image. "
+            "When provided, each visual is shown for the duration proportional "
+            "to its speech word-count, keeping audio and images in sync. "
+            "The combined text should match speech_content exactly."
+        ),
     )
 
 
@@ -68,13 +75,16 @@ class VideoConfiguration(BaseModel):
     length_seconds: Optional[float] = Field(
         default=None, description="Desired video length in seconds"
     )
-    speech_content: str = Field(..., description="Plain text to be converted to audio")
-    background_music: Optional[str] = Field(
-        default=None, description="Path to background music audio file"
+    speech_content: Optional[str] = Field(
+        default=None, 
+        description="Plain text to be converted to audio (required if speech_audio not provided)"
     )
-    uploaded_background_music: Optional[Dict[str, bytes]] = Field(
-        default=None,
-        description="In-memory uploaded background music keyed by filename (used by the UI)",
+    speech_audio: Optional[str] = Field(
+        default=None, 
+        description="Path to pre-made speech audio file (skips TTS if provided)"
+    )
+    background_music: Optional[str] = Field(
+        default=None, description="Path to background music audio file",
     )
     visual_assets: VisualAssetConfig = Field(..., description="Visual assets configuration")
     image_modification_instructions: Optional[str] = Field(
@@ -83,6 +93,15 @@ class VideoConfiguration(BaseModel):
     subtitles_enabled: bool = Field(
         default=False, description="Toggle to burn subtitles onto the video"
     )
+
+    @field_validator("image_modification_instructions")
+    def reject_unsupported_image_modification(cls, value):
+        if value is not None:
+            raise ValueError(
+                "image_modification_instructions is reserved for future use and is not supported yet. "
+                "Remove this field from your configuration until the feature is implemented."
+            )
+        return value
     output_format: OutputFormat = Field(
         default=OutputFormat.MP4, description="Output video format"
     )
@@ -106,7 +125,32 @@ class VideoConfiguration(BaseModel):
         default=None,
         description="Image style preset for this video, e.g. 'cinematic' (overrides config default)",
     )
+    tts_voice: Optional[str] = Field(
+        default=None,
+        description="TTS voice for this video (overrides config and language defaults)",
+    )
     tts_rate: Optional[str] = Field(
         default=None,
         description="Speaking rate for this video, e.g. '-10%' (overrides config default)",
     )
+    save_to_source_folder: bool = Field(
+        default=False,
+        description="When True and using local images/videos, save output video to the source folder instead of the default output directory",
+    )
+
+
+@dataclass
+class VideoContext:
+    config: VideoConfiguration
+    output_dir: Path
+    workspace: Path
+    
+    width: int
+    height: int
+    
+    # Merged config (defaults from default_config.yaml + overrides from VideoConfiguration)
+    merged_config: Dict[str, Any]
+    
+    logger: logging.Logger
+    
+    duration: Optional[float] = None

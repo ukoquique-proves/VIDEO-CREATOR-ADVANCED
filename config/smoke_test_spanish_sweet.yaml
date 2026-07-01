@@ -1,0 +1,15 @@
+title: "Prueba de Voz Dulce en Español"
+language: es
+tts_backend: edge_tts
+tts_voice: es-MX-DaliaNeural
+tts_rate: "+0%"
+speech_content: |
+  ¡Hola! Esta es una prueba de voz dulce en español mexicano usando Dalia. Espero que te guste.
+visual_assets:
+  asset_type: "text_prompts"
+  prompts:
+    - "Una bonita playa en México con palmeras y mar turquesa"
+subtitles_enabled: true
+image_engine: picsum
+output_format: "mp4"
+orientation: "vertical"
