@@ -14,7 +14,7 @@ import logging
 import textwrap
 import warnings
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from urllib.parse import quote
 
 from src import config_loader
@@ -40,7 +40,128 @@ def _get_provider_manager() -> ProviderManager:
 
 
 # ---------------------------------------------------------------------------
-# Public API
+# NEW Stable Public API
+# ---------------------------------------------------------------------------
+
+def generate_images_from_prompts(
+    prompts: List[str],
+    output_dir: str,
+    *,
+    style: Optional[str] = None,
+    aspect_ratio: Optional[str] = None,
+    engine: Optional[str] = None,
+    width: Optional[int] = None,
+    height: Optional[int] = None,
+    context: Optional[Any] = None,
+    provider_manager: Optional[ProviderManager] = None,
+) -> List[str]:
+    """Generate one image per prompt and return a list of file paths.
+
+    Args:
+        prompts: List of text prompts for AI image generation
+        output_dir: Directory where generated images should be saved
+        style: Optional style preset (overrides config default)
+        aspect_ratio: Optional aspect ratio (overrides config default)
+        engine: Optional image engine to use (overrides config default)
+        width: Optional image width in pixels
+        height: Optional image height in pixels
+        context: Optional VideoContext object (for backward compatibility)
+        provider_manager: Optional ProviderManager for dependency injection
+
+    Returns:
+        List of file paths to the generated images
+    """
+    # Determine config and logger
+    if context is not None:
+        cfg = context.merged_config.get("image", {})
+        vcfg = context.merged_config.get("video", {})
+        use_logger = context.logger
+    else:
+        cfg = config_loader.image()
+        vcfg = config_loader.video()
+        use_logger = logger
+
+    # Resolve parameters with defaults from config
+    if style is None:
+        style = cfg.get("style", "photorealistic")
+    if aspect_ratio is None:
+        aspect_ratio = cfg.get("aspect_ratio", "9:16")
+    if engine is None:
+        engine = cfg.get("engine")
+
+    if engine in {"unsplash", "pexels"}:
+        raise ValueError(
+            f"Unsupported image engine '{engine}'. "
+            "Unsplash and Pexels are not implemented yet. "
+            "Use cloudflare, siliconflow, pollinations, huggingface, or picsum."
+        )
+
+    # Resolve dimensions
+    if width is None or height is None:
+        base_w = vcfg.get("width", 1080)
+        base_h = vcfg.get("height", 1920)
+        _w, _h = _dimensions_for_aspect(aspect_ratio, base_w, base_h)
+        if width is None:
+            width = _w
+        if height is None:
+            height = _h
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Try Picsum first if explicitly requested
+    if engine == "picsum":
+        stock_dir = os.path.join(output_dir, "stock")
+        os.makedirs(stock_dir, exist_ok=True)
+        paths = _picsum_batch(prompts, stock_dir, width, height, use_logger)
+        if paths:
+            return paths
+        use_logger.warning("Picsum failed or returned partial results — trying next provider.")
+
+    # Try native image generation
+    gen_dir = os.path.join(output_dir, "generated")
+    os.makedirs(gen_dir, exist_ok=True)
+    native_paths = _try_native_image_generation(prompts, gen_dir, style, width, height, engine, use_logger, provider_manager)
+    if native_paths:
+        return native_paths
+
+    # Fall back to placeholders
+    use_logger.warning("Native image generation failed or unavailable — using Pillow placeholder images.")
+    return _generate_placeholder_images(prompts, gen_dir, width=width, height=height, vcfg=vcfg, log=use_logger)
+
+
+def copy_user_provided_media(
+    image_paths: List[str],
+    output_dir: str,
+    *,
+    context: Optional[Any] = None,
+) -> List[str]:
+    """Validate and copy user-provided visual files into the workspace.
+
+    Args:
+        image_paths: List of file paths to user-provided images/videos
+        output_dir: Directory where files should be copied
+        context: Optional VideoContext object (for backward compatibility)
+
+    Returns:
+        List of file paths to the copied files
+    """
+    use_logger = context.logger if context is not None else logger
+    import shutil
+    cached_dir = os.path.join(output_dir, "cached")
+    os.makedirs(cached_dir, exist_ok=True)
+    copied: List[str] = []
+    for src in image_paths:
+        if not os.path.isfile(src):
+            use_logger.warning("Visual asset not found, skipping: %s", src)
+            continue
+        dst = os.path.join(cached_dir, os.path.basename(src))
+        shutil.copy2(src, dst)
+        copied.append(dst)
+    return copied
+
+
+# ---------------------------------------------------------------------------
+# Legacy Public API (Backward Compatibility)
 # ---------------------------------------------------------------------------
 
 from src.schema import VideoContext
@@ -51,12 +172,20 @@ def generate_from_prompts(
 ) -> List[str]:
     """Generate one image per prompt and return a list of file paths.
 
+    DEPRECATED: Use generate_images_from_prompts() instead.
+
     The preferred call style is keyword-based, for example:
     generate_from_prompts(prompts=[...], output_dir="...", context=context)
 
     Legacy positional calls that pass a VideoContext as the first argument are
     still supported for compatibility, but they emit a DeprecationWarning.
     """
+    warnings.warn(
+        "generate_from_prompts() is deprecated; use generate_images_from_prompts() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    
     provider_manager = kwargs.pop("provider_manager", None)
     
     if args and isinstance(args[0], VideoContext):
@@ -73,10 +202,6 @@ def generate_from_prompts(
         engine = args[5] if len(args) > 5 else kwargs.pop("engine", None)
         width = args[6] if len(args) > 6 else kwargs.pop("width", None)
         height = args[7] if len(args) > 7 else kwargs.pop("height", None)
-        
-        cfg = context.merged_config.get("image", {})
-        vcfg = context.merged_config.get("video", {})
-        use_logger = context.logger
     else:
         context = None
         prompts = args[0] if len(args) > 0 else kwargs.pop("prompts", None)
@@ -86,56 +211,25 @@ def generate_from_prompts(
         engine = args[4] if len(args) > 4 else kwargs.pop("engine", None)
         width = args[5] if len(args) > 5 else kwargs.pop("width", None)
         height = args[6] if len(args) > 6 else kwargs.pop("height", None)
-        
-        cfg = config_loader.image()
-        vcfg = config_loader.video()
-        use_logger = logger
-        
-    if style is None:
-        style = cfg.get("style", "photorealistic")
-    if aspect_ratio is None:
-        aspect_ratio = cfg.get("aspect_ratio", "9:16")
-    if engine is None:
-        engine = cfg.get("engine")
-
-    if engine in {"unsplash", "pexels"}:
-        raise ValueError(
-            f"Unsupported image engine '{engine}'. "
-            "Unsplash and Pexels are not implemented yet. "
-            "Use cloudflare, siliconflow, pollinations, huggingface, or picsum."
-        )
-
-    if width is None or height is None:
-        base_w = vcfg.get("width", 1080)
-        base_h = vcfg.get("height", 1920)
-        _w, _h = _dimensions_for_aspect(aspect_ratio, base_w, base_h)
-        if width is None:
-            width = _w
-        if height is None:
-            height = _h
-
-    os.makedirs(output_dir, exist_ok=True)
-
-    if engine == "picsum":
-        stock_dir = os.path.join(output_dir, "stock")
-        os.makedirs(stock_dir, exist_ok=True)
-        paths = _picsum_batch(prompts, stock_dir, width, height, use_logger)
-        if paths:
-            return paths
-        use_logger.warning("Picsum failed or returned partial results — trying next provider.")
-
-    gen_dir = os.path.join(output_dir, "generated")
-    os.makedirs(gen_dir, exist_ok=True)
-    native_paths = _try_native_image_generation(prompts, gen_dir, style, width, height, engine, use_logger, provider_manager)
-    if native_paths:
-        return native_paths
-
-    use_logger.warning("Native image generation failed or unavailable — using Pillow placeholder images.")
-    return _generate_placeholder_images(prompts, gen_dir, width=width, height=height, vcfg=vcfg, log=use_logger)
+    
+    # Delegate to the new stable API
+    return generate_images_from_prompts(
+        prompts=prompts,
+        output_dir=output_dir,
+        style=style,
+        aspect_ratio=aspect_ratio,
+        engine=engine,
+        width=width,
+        height=height,
+        context=context,
+        provider_manager=provider_manager,
+    )
 
 
 def copy_provided_images(*args, **kwargs) -> List[str]:
     """Validate and copy user-provided visual files into the workspace.
+
+    DEPRECATED: Use copy_user_provided_media() instead.
 
     The preferred call style is keyword-based, for example:
     copy_provided_images(image_paths=[...], output_dir="...", context=context)
@@ -143,6 +237,12 @@ def copy_provided_images(*args, **kwargs) -> List[str]:
     Legacy positional calls that pass a VideoContext as the first argument are
     still supported for compatibility, but they emit a DeprecationWarning.
     """
+    warnings.warn(
+        "copy_provided_images() is deprecated; use copy_user_provided_media() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    
     if args and isinstance(args[0], VideoContext):
         warnings.warn(
             "Passing VideoContext positionally to copy_provided_images() is deprecated; use context=... instead.",
@@ -152,25 +252,17 @@ def copy_provided_images(*args, **kwargs) -> List[str]:
         context = args[0]
         image_paths = args[1] if len(args) > 1 else kwargs.pop("image_paths", None)
         output_dir = args[2] if len(args) > 2 else kwargs.pop("output_dir", None)
-        use_logger = context.logger
     else:
         context = None
         image_paths = args[0] if len(args) > 0 else kwargs.pop("image_paths", None)
         output_dir = args[1] if len(args) > 1 else kwargs.pop("output_dir", None)
-        use_logger = logger
-        
-    import shutil
-    cached_dir = os.path.join(output_dir, "cached")
-    os.makedirs(cached_dir, exist_ok=True)
-    copied: List[str] = []
-    for src in image_paths:
-        if not os.path.isfile(src):
-            use_logger.warning("Visual asset not found, skipping: %s", src)
-            continue
-        dst = os.path.join(cached_dir, os.path.basename(src))
-        shutil.copy2(src, dst)
-        copied.append(dst)
-    return copied
+    
+    # Delegate to the new stable API
+    return copy_user_provided_media(
+        image_paths=image_paths,
+        output_dir=output_dir,
+        context=context,
+    )
 
 
 # Forward-looking alias — same behavior, clearer name for mixed media callers.

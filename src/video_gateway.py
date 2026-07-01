@@ -17,22 +17,30 @@ class TTSCallable(Protocol):
     ) -> Any: ...
 
 
-class GenerateFromPromptsCallable(Protocol):
+class GenerateImagesFromPromptsCallable(Protocol):
     def __call__(
         self,
         prompts: List[str],
-        visuals_dir: str,
+        output_dir: str,
+        *,
         style: Optional[str] = None,
         engine: Optional[str] = None,
         aspect_ratio: Optional[str] = None,
         width: Optional[int] = None,
         height: Optional[int] = None,
+        context: Optional[Any] = None,
         provider_manager: Optional[Any] = None,
     ) -> List[str]: ...
 
 
-class CopyProvidedImagesCallable(Protocol):
-    def __call__(self, images: List[str], dest_dir: str) -> List[str]: ...
+class CopyUserProvidedMediaCallable(Protocol):
+    def __call__(
+        self,
+        image_paths: List[str],
+        output_dir: str,
+        *,
+        context: Optional[Any] = None,
+    ) -> List[str]: ...
 
 
 class ModifyImagesCallable(Protocol):
@@ -64,11 +72,14 @@ class AssembleVideoCallable(Protocol):
 @dataclass
 class VideoGateway:
     tts: Optional[TTSCallable] = None
-    generate_from_prompts: Optional[GenerateFromPromptsCallable] = None
-    copy_provided_images: Optional[CopyProvidedImagesCallable] = None
+    generate_images_from_prompts: Optional[GenerateImagesFromPromptsCallable] = None
+    copy_user_provided_media: Optional[CopyUserProvidedMediaCallable] = None
     modify_images: Optional[ModifyImagesCallable] = None
     assemble_video: Optional[AssembleVideoCallable] = None
     subtitle_backend: Optional[object] = None
+    # Backwards compatibility
+    generate_from_prompts: Optional[GenerateImagesFromPromptsCallable] = None
+    copy_provided_images: Optional[CopyUserProvidedMediaCallable] = None
 
     def __post_init__(self):
         # If the gateway is used as a partial bundle (some callables set,

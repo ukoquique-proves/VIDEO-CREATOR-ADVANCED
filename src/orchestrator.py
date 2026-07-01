@@ -160,12 +160,17 @@ class VideoOrchestrator:
         self._tts = tts_callable  # Keep for backwards compatibility
 
         # Initialize Visual service
-        generate_fn = gateway.generate_from_prompts if (gateway and gateway.generate_from_prompts) else None
-        copy_fn = gateway.copy_provided_images if (gateway and gateway.copy_provided_images) else None
+        # Prefer new function names, fall back to old ones for backwards compatibility
+        if gateway:
+            generate_fn = gateway.generate_images_from_prompts or gateway.generate_from_prompts
+            copy_fn = gateway.copy_user_provided_media or gateway.copy_provided_images
+        else:
+            generate_fn = None
+            copy_fn = None
         modify_fn = gateway.modify_images if (gateway and gateway.modify_images) else None
         self.visual_service = VisualService(
-            generate_from_prompts=generate_fn,
-            copy_provided_images=copy_fn,
+            generate_images_from_prompts=generate_fn,
+            copy_user_provided_media=copy_fn,
             modify_images=modify_fn,
             provider_manager=provider_manager,
         )

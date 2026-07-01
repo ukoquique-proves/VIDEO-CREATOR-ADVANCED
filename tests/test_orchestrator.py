@@ -116,8 +116,8 @@ def _patch_adapters():
     mock_subtitle_backend = _MockSubtitleBackend()
     with (
         patch("src.orchestrator.tts_adapter.generate_speech", side_effect=_mock_generate_speech),
-        patch("src.orchestrator.image_adapter.generate_from_prompts", side_effect=_mock_generate_from_prompts) as mock_gen,
-        patch("src.orchestrator.image_adapter.copy_provided_images", side_effect=_mock_copy_images),
+        patch("src.orchestrator.image_adapter.generate_images_from_prompts", side_effect=_mock_generate_from_prompts) as mock_gen,
+        patch("src.orchestrator.image_adapter.copy_user_provided_media", side_effect=_mock_copy_images),
         patch("src.orchestrator.assembler_adapter.assemble_video", side_effect=_mock_assemble_video) as mock_assemble,
         patch("src.backends.ffmpeg_subtitle_backend.FFmpegSubtitleBackend", return_value=mock_subtitle_backend),
     ):

@@ -24,13 +24,13 @@ class VisualService:
 
     def __init__(
         self,
-        generate_from_prompts=None,
-        copy_provided_images=None,
+        generate_images_from_prompts=None,
+        copy_user_provided_media=None,
         modify_images=None,
         provider_manager: Optional[ProviderManager] = None,
     ):
-        self._generate_from_prompts = generate_from_prompts
-        self._copy_provided_images = copy_provided_images
+        self._generate_images_from_prompts = generate_images_from_prompts
+        self._copy_user_provided_media = copy_user_provided_media
         self._modify_images = modify_images
         self._provider_manager = provider_manager
         self._upload_service = UploadService()
@@ -63,8 +63,13 @@ class VisualService:
                 )
                 return []
 
-            copy_fn = self._copy_provided_images or image_adapter.copy_provided_images
-            resolved = copy_fn(images, visuals_dir)
+            copy_fn = self._copy_user_provided_media or image_adapter.copy_user_provided_media
+            try:
+                # Try new-style keyword arguments first
+                resolved = copy_fn(image_paths=images, output_dir=visuals_dir)
+            except TypeError:
+                # Fall back to old-style positional arguments for backwards compatibility
+                resolved = copy_fn(images, visuals_dir)
 
             if config.visual_assets.asset_type == VisualAssetType.MEDIA_SEQUENCE:
                 n_clips = sum(1 for p in resolved if is_video_file(p))
@@ -81,20 +86,33 @@ class VisualService:
             logger.warning("TEXT_PROMPTS selected but no prompts provided.")
             return []
 
-        if self._generate_from_prompts:
-            return self._generate_from_prompts(
-                prompts,
-                visuals_dir,
-                style=config.image_style,
-                engine=config.image_engine.value if config.image_engine else None,
-                aspect_ratio=aspect_ratio,
-                width=width,
-                height=height,
-            )
+        if self._generate_images_from_prompts:
+            try:
+                # Try new-style keyword arguments first
+                return self._generate_images_from_prompts(
+                    prompts=prompts,
+                    output_dir=visuals_dir,
+                    style=config.image_style,
+                    engine=config.image_engine.value if config.image_engine else None,
+                    aspect_ratio=aspect_ratio,
+                    width=width,
+                    height=height,
+                )
+            except TypeError:
+                # Fall back to old-style positional arguments for backwards compatibility
+                return self._generate_images_from_prompts(
+                    prompts,
+                    visuals_dir,
+                    style=config.image_style,
+                    engine=config.image_engine.value if config.image_engine else None,
+                    aspect_ratio=aspect_ratio,
+                    width=width,
+                    height=height,
+                )
         else:
-            return image_adapter.generate_from_prompts(
-                prompts,
-                visuals_dir,
+            return image_adapter.generate_images_from_prompts(
+                prompts=prompts,
+                output_dir=visuals_dir,
                 style=config.image_style,
                 engine=config.image_engine.value if config.image_engine else None,
                 aspect_ratio=aspect_ratio,

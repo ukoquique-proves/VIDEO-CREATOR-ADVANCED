@@ -183,16 +183,23 @@ class TestImageAdapter:
         prompts = ["A cat", "A dog", "A bird"]
         with patch.object(image_adapter, "_picsum_batch", return_value=[]), \
              patch.object(image_adapter, "_try_native_image_generation", return_value=None):
-            paths = image_adapter.generate_from_prompts(prompts, out_dir)
+            paths = image_adapter.generate_images_from_prompts(prompts, out_dir)
         assert len(paths) == 3
         for p in paths:
             assert os.path.isfile(p)
             assert p.endswith(".png")
 
-    def test_copy_provided_images(self, sample_images, tmp_path):
+    def test_copy_user_provided_media(self, sample_images, tmp_path):
         """Provided images should be copied into the workspace."""
         out_dir = str(tmp_path / "copied")
-        paths = image_adapter.copy_provided_images(sample_images, out_dir)
+        paths = image_adapter.copy_user_provided_media(sample_images, out_dir)
+        assert len(paths) == 2
+
+    def test_copy_provided_images(self, sample_images, tmp_path):
+        """Legacy copy_provided_images should still work (deprecated)."""
+        out_dir = str(tmp_path / "copied")
+        with pytest.warns(DeprecationWarning, match="deprecated"):
+            paths = image_adapter.copy_provided_images(sample_images, out_dir)
         assert len(paths) == 2
 
     def test_copy_provided_images_warns_on_legacy_context_first_call(self, sample_images, tmp_path):
@@ -209,7 +216,7 @@ class TestImageAdapter:
     def test_copy_skips_missing(self, tmp_path):
         """Missing source images should be skipped without raising."""
         out_dir = str(tmp_path / "out")
-        paths = image_adapter.copy_provided_images(["/nonexistent/a.png"], out_dir)
+        paths = image_adapter.copy_user_provided_media(["/nonexistent/a.png"], out_dir)
         assert paths == []
 
     def test_modify_images_raises_not_implemented(self, sample_images):
@@ -222,7 +229,7 @@ class TestImageAdapter:
         out_dir = str(tmp_path / "imgs")
         with patch.object(image_adapter, "_picsum_batch", return_value=["fake.jpg"]) as mock_picsum, \
              patch.object(image_adapter, "_try_native_image_generation") as mock_native:
-            paths = image_adapter.generate_from_prompts(["test"], out_dir, engine="picsum")
+            paths = image_adapter.generate_images_from_prompts(["test"], out_dir, engine="picsum")
             
         mock_picsum.assert_called_once()
         mock_native.assert_not_called()
@@ -233,7 +240,7 @@ class TestImageAdapter:
         out_dir = str(tmp_path / "imgs")
         with patch("src.image_adapter.config_loader.image", return_value={"style": "photorealistic", "aspect_ratio": "9:16", "engine": "cloudflare"}), \
              patch("src.image_adapter._try_native_image_generation", return_value=["cloudflare.png"]) as mock_try:
-            paths = image_adapter.generate_from_prompts(["test"], out_dir)
+            paths = image_adapter.generate_images_from_prompts(["test"], out_dir)
 
         mock_try.assert_called_once()
         positional_args, _ = mock_try.call_args
