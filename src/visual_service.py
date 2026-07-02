@@ -10,6 +10,7 @@ from typing import List, Optional, Dict
 from src.schema import VideoConfiguration, VisualAssetType
 from src import image_adapter
 from src.image_providers.manager import ProviderManager
+from src.image_providers.registry import ProviderRegistry
 from src.utils import is_video_file
 from src.upload_service import UploadService
 
@@ -28,11 +29,13 @@ class VisualService:
         copy_user_provided_media=None,
         modify_images=None,
         provider_manager: Optional[ProviderManager] = None,
+        provider_registry: Optional[ProviderRegistry] = None,
     ):
         self._generate_images_from_prompts = generate_images_from_prompts
         self._copy_user_provided_media = copy_user_provided_media
         self._modify_images = modify_images
         self._provider_manager = provider_manager
+        self._provider_registry = provider_registry
         self._upload_service = UploadService()
 
     def prepare_visuals(
@@ -119,6 +122,7 @@ class VisualService:
                 width=width,
                 height=height,
                 provider_manager=self._provider_manager,
+                provider_registry=self._provider_registry,
             )
 
     def prepare_visuals_with_modifications(

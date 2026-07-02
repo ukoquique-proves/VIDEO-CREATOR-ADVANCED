@@ -19,7 +19,11 @@ from urllib.parse import quote
 
 from src import config_loader
 from src.image_providers.manager import ProviderManager
-from src.image_providers.registry import get_provider_registry, auto_register_providers
+from src.image_providers.registry import (
+    get_provider_registry, 
+    auto_register_providers,
+    ProviderRegistry
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,15 +31,16 @@ logger = logging.getLogger(__name__)
 _provider_manager: Optional[ProviderManager] = None
 
 
-def _get_provider_manager() -> ProviderManager:
+def _get_provider_manager(registry=None) -> ProviderManager:
     """Get or create the global ProviderManager instance with auto-registered providers."""
     global _provider_manager
     if _provider_manager is None:
         _provider_manager = ProviderManager()
         # Auto-register all available providers based on credentials
-        auto_register_providers(_provider_manager)
+        auto_register_providers(_provider_manager, registry)
         # Log provider status for debugging
-        get_provider_registry().log_provider_status()
+        reg_to_log = registry if registry is not None else get_provider_registry()
+        reg_to_log.log_provider_status()
     return _provider_manager
 
 
@@ -54,6 +59,7 @@ def generate_images_from_prompts(
     height: Optional[int] = None,
     context: Optional[Any] = None,
     provider_manager: Optional[ProviderManager] = None,
+    provider_registry: Optional["ProviderRegistry"] = None,
 ) -> List[str]:
     """Generate one image per prompt and return a list of file paths.
 
@@ -120,7 +126,7 @@ def generate_images_from_prompts(
     # Try native image generation
     gen_dir = os.path.join(output_dir, "generated")
     os.makedirs(gen_dir, exist_ok=True)
-    native_paths = _try_native_image_generation(prompts, gen_dir, style, width, height, engine, use_logger, provider_manager)
+    native_paths = _try_native_image_generation(prompts, gen_dir, style, width, height, engine, use_logger, provider_manager, provider_registry)
     if native_paths:
         return native_paths
 
@@ -302,9 +308,10 @@ def _try_native_image_generation(
     preferred_engine: Optional[str] = None,
     log = logger,
     provider_manager: Optional[ProviderManager] = None,
+    provider_registry: Optional["ProviderRegistry"] = None,
 ) -> Optional[List[str]]:
     """Use the provided ProviderManager (or global one if not provided) to generate images with automatic failover."""
-    manager = provider_manager if provider_manager is not None else _get_provider_manager()
+    manager = provider_manager if provider_manager is not None else _get_provider_manager(registry=provider_registry)
     
     manager.output_dir = Path(output_dir)
     manager.output_dir.mkdir(parents=True, exist_ok=True)

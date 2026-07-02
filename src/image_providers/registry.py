@@ -206,9 +206,10 @@ def get_provider_registry() -> ProviderRegistry:
     return _registry
 
 
-def auto_register_providers(manager) -> None:
+def auto_register_providers(manager, registry=None) -> None:
     """Auto-register all available providers in the manager."""
-    registry = get_provider_registry()
+    if registry is None:
+        registry = get_provider_registry()
     
     logger.debug("Auto-registering providers based on available credentials...")
     

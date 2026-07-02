@@ -37,65 +37,14 @@ from src.workspace_manager import WorkspaceManager
 from src.tts_service import TTSService
 from src.visual_service import VisualService
 from src.assembly_service import AssemblyService
+from src.duration_service import resolve_total_duration
+from src.image_providers.registry import ProviderRegistry
 
 # Keep this for backwards compatibility
 FFmpegSubtitleBackend = None
 
 
 logger = logging.getLogger(__name__)
-
-
-# Keep these helper functions here for backwards compatibility
-def _probe_audio_duration(path: str) -> float:
-    try:
-        result = subprocess.run(
-            [
-                "ffprobe",
-                "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "json",
-                path,
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        data = json.loads(result.stdout)
-        duration = float(data["format"]["duration"])
-        return duration
-    except Exception as exc:
-        raise RuntimeError(f"ffprobe duration measurement failed: {exc}") from exc
-
-
-def _resolve_total_duration(
-    explicit_seconds: Optional[float], audio_path: str, logger_instance=None
-) -> Optional[float]:
-    log = logger_instance or logger
-    if explicit_seconds is not None:
-        log.debug("Using explicit duration: %.2fs", explicit_seconds)
-        return explicit_seconds
-    try:
-        duration = _probe_audio_duration(audio_path)
-        log.info("Measured audio duration via ffprobe: %.2fs", duration)
-        return duration
-    except Exception as exc:
-        log.warning(
-            "Could not measure audio duration via ffprobe (%s) — falling back to moviepy.",
-            exc,
-        )
-    try:
-        from moviepy import AudioFileClip
-        audio = AudioFileClip(audio_path)
-        duration = audio.duration
-        audio.close()
-        log.info("Measured audio duration via moviepy: %.2fs", duration)
-        return duration
-    except Exception as exc:
-        log.warning(
-            "Could not measure audio duration via moviepy (%s) — unable to determine duration.",
-            exc,
-        )
-        return None
 
 
 def _resolve_dimensions_and_orientation(config: VideoConfiguration) -> tuple:
@@ -146,10 +95,12 @@ class VideoOrchestrator:
         subtitle_backend: Optional[SubtitleBackend] = None,
         gateway: Optional[VideoGateway] = None,
         provider_manager: Optional[ProviderManager] = None,
+        provider_registry: Optional[ProviderRegistry] = None,
     ):
         self.output_dir = Path(output_dir)  # Keep for backwards compatibility
         self._gateway = gateway  # Keep for backwards compatibility
         self._provider_manager = provider_manager  # Keep for backwards compatibility
+        self._provider_registry = provider_registry
 
         # Create services
         self.workspace_manager = WorkspaceManager(output_dir)
@@ -173,6 +124,7 @@ class VideoOrchestrator:
             copy_user_provided_media=copy_fn,
             modify_images=modify_fn,
             provider_manager=provider_manager,
+            provider_registry=provider_registry,
         )
         # Keep for backwards compatibility
         self._generate_from_prompts = generate_fn
@@ -237,7 +189,7 @@ class VideoOrchestrator:
         audio_path = self.tts_service.run_tts_audio(config, workspace, context)
 
         # Step 3: Duration
-        total_duration = _resolve_total_duration(
+        total_duration = resolve_total_duration(
             config.length_seconds, audio_path, logger
         )
         context.duration = total_duration

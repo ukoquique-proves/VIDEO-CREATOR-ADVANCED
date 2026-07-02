@@ -18,8 +18,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-import fcntl
-import uuid
 
 import yaml
 from dotenv import load_dotenv
@@ -29,73 +27,18 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=False)
 
 from src.schema import VideoConfiguration
 from src.orchestrator import VideoOrchestrator
+from src.lock_service import (
+    acquire_background_lock,
+    release_background_lock
+)
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
-def _acquire_background_lock(lock_path: Path | str) -> bool:
-    """Prevent overlapping video generations by reserving a pid-file lock."""
-    path = Path(lock_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Use an fcntl-based exclusive non-blocking lock on the lock file.
-    # Hold the open file descriptor in a module-level dict so the lock
-    # remains held for the lifetime of the process until release.
-    global _LOCK_FDS
-    try:
-        _LOCK_FDS
-    except NameError:
-        _LOCK_FDS = {}
-
-    f = open(path, "a+", encoding="utf-8")
-    try:
-        fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except (BlockingIOError, OSError):
-        # Another process holds the lock
-        try:
-            # attempt to read pid/uuid for diagnostics
-            f.seek(0)
-            info = f.read().strip()
-        except Exception:
-            info = ""
-        f.close()
-        return False
-
-    # We have the lock — write PID + run UUID for diagnosability
-    run_id = uuid.uuid4().hex
-    f.seek(0)
-    f.truncate(0)
-    f.write(f"{os.getpid()} {run_id}\n")
-    f.flush()
-    # keep file descriptor open to hold the lock
-    _LOCK_FDS[str(path)] = f
-    return True
-
-
-def _release_background_lock(lock_path: Path | str) -> None:
-    """Release the pid-file guard for a finished generation."""
-    global _LOCK_FDS
-    try:
-        _LOCK_FDS
-    except NameError:
-        _LOCK_FDS = {}
-
-    key = str(Path(lock_path))
-    f = _LOCK_FDS.pop(key, None)
-    if f is not None:
-        try:
-            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-        except Exception:
-            pass
-        try:
-            f.close()
-        except Exception:
-            pass
-    try:
-        Path(lock_path).unlink(missing_ok=True)
-    except Exception:
-        pass
+# Backward compatibility
+_acquire_background_lock = acquire_background_lock
+_release_background_lock = release_background_lock
 
 
 def main() -> None:
@@ -183,7 +126,7 @@ def main() -> None:
         sys.exit(0)
 
     # Foreground execution: acquire lock and run pipeline
-    if not _acquire_background_lock(lock_path):
+    if not acquire_background_lock(lock_path):
         logger.error(
             "A video generation is already running for output directory %s. "
             "Wait for the current run to finish before starting another one.",
@@ -202,7 +145,7 @@ def main() -> None:
         sys.exit(1)
     finally:
         if lock_acquired:
-            _release_background_lock(lock_path)
+            release_background_lock(lock_path)
 
 
 if __name__ == "__main__":

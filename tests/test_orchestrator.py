@@ -457,7 +457,9 @@ class TestSanitization:
             ),
         )
 
-        result = orch.create_video(cfg, uploaded_images={bad_name: b"evil content"})
+        # Valid PNG magic bytes plus some dummy content
+        valid_png_data = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+        result = orch.create_video(cfg, uploaded_images={bad_name: valid_png_data})
         assert os.path.isfile(result["output_path"])
         assert not os.path.exists(outside_path)
 

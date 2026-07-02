@@ -1,0 +1,40 @@
+title: "Nothing"
+language: en
+speech_content: |
+  Sitting target
+  Sitting, waiting
+  Anticipating
+  Nothing
+  Nothing
+
+  Life
+  Is full of surprises
+  It advertises
+  Nothing
+  Nothing
+
+  What am I trying to do, what am I trying to say?
+  I'm not trying to tell you anything
+  You didn't know when you woke up today
+
+  Sitting target
+  Sitting, praying
+  God is saying
+  Nothing
+  Nothing
+
+  Always
+  Knows the prospects
+  Learn to expect
+  Nothing
+  Nothing
+visual_assets:
+  asset_type: "text_prompts"
+  prompts:
+    - "A dark urban alley at dusk, moody cinematic lighting"
+    - "A lone figure standing still in a rain-soaked street"
+    - "A dramatic silhouette under a cold neon sign"
+    - "A tense empty room with flickering lights"
+    - "A powerful abstract transition with shadow and light"
+subtitles_enabled: true
+output_format: "mp4"

@@ -26,7 +26,7 @@ import edge_tts
 from src.schema import VideoConfiguration, VisualAssetConfig, VisualAssetType, Orientation, Language
 from src.orchestrator import VideoOrchestrator
 from src import config_loader
-from src.main import _acquire_background_lock, _release_background_lock
+from src.lock_service import acquire_background_lock, release_background_lock
 
 # Cache available voices by language code (to avoid re-fetching every time)
 @st.cache_data(show_spinner="Fetching available voices...")
@@ -82,7 +82,7 @@ def _run_pipeline(
         default_output = cfg.get("output_dir", str(project_root / "output"))
         lock_path = Path(default_output) / "logs" / ".generation.lock"
 
-        if not _acquire_background_lock(lock_path):
+        if not acquire_background_lock(lock_path):
             result_queue.put(("err", RuntimeError("A video generation is already running.")))
             return
 
@@ -96,7 +96,7 @@ def _run_pipeline(
     except Exception as exc:
         result_queue.put(("err", exc))
     finally:
-        _release_background_lock(lock_path)
+        release_background_lock(lock_path)
         src_logger.removeHandler(handler)
 
 
