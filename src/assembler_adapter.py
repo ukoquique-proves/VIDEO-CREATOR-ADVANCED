@@ -52,7 +52,7 @@ def assemble_video(
     """
     if args and isinstance(args[0], VideoContext):
         context = args[0]
-        audio_path = args[1] if len(args) > 1 else kwargs.pop("audio_path", None)
+        audio_path: Optional[str] = args[1] if len(args) > 1 else kwargs.pop("audio_path", None)
         visual_files = args[2] if len(args) > 2 else kwargs.pop("visual_files", None)
         title = args[3] if len(args) > 3 else kwargs.pop("title", "untitled")
         output_dir = args[4] if len(args) > 4 else kwargs.pop("output_dir", "output")
@@ -67,7 +67,7 @@ def assemble_video(
         use_logger = context.logger
     else:
         context = None
-        audio_path = args[0] if len(args) > 0 else kwargs.pop("audio_path", None)
+        audio_path: Optional[str] = args[0] if len(args) > 0 else kwargs.pop("audio_path", None)
         visual_files = args[1] if len(args) > 1 else kwargs.pop("visual_files", None)
         title = args[2] if len(args) > 2 else kwargs.pop("title", "untitled")
         output_dir = args[3] if len(args) > 3 else kwargs.pop("output_dir", "output")
@@ -111,7 +111,7 @@ def assemble_video(
 
 
 def local_moviepy_assemble(
-    audio_path: str,
+    audio_path: Optional[str],
     visual_files: List[str],
     output_dir: str,
     output_filename: str,
@@ -169,7 +169,7 @@ class MoviePyProgressLogger:
 
 
 def _local_moviepy_assemble(
-    audio_path: str,
+    audio_path: Optional[str],
     visual_files: List[str],
     output_dir: str,
     output_filename: str,
@@ -213,19 +213,31 @@ def _local_moviepy_assemble(
             "Ensure moviepy==2.1.2 is installed."
         ) from exc
 
-    log.info("Native MoviePy assembly: %d visuals + audio", len(visual_files))
+    log.info("Native MoviePy assembly: %d visuals", len(visual_files))
+    if audio_path:
+        log.info("Including speech audio track")
+    if background_music:
+        log.info("Including background music track")
 
     output_path = os.path.join(output_dir, output_filename)
-    audio = AudioFileClip(audio_path)
-    clips: List = []
+    audio = None
     bg = None
+    if audio_path:
+        audio = AudioFileClip(audio_path)
+    clips: List = []
     try:
         if duration is not None:
             total_duration = duration
             log.info("Using provided duration for assembly: %.2fs", total_duration)
-        else:
+        elif audio_path:
             total_duration = audio.duration
             log.info("Calculated duration from audio: %.2fs", total_duration)
+        elif background_music:
+            bg = AudioFileClip(background_music)
+            total_duration = bg.duration
+            log.info("Calculated duration from background music: %.2fs", total_duration)
+        else:
+            raise RuntimeError("No audio or duration provided for video assembly.")
 
         time_per_visual = total_duration / max(len(visual_files), 1)
         if merged_config is not None:
@@ -253,30 +265,38 @@ def _local_moviepy_assemble(
 
         video = concatenate_videoclips(clips, method="chain")
 
-        if audio.duration is not None and audio.duration > total_duration:
+        # Handle audio
+        final_audio = None
+        if audio and audio.duration is not None and audio.duration > total_duration:
             log.info("Subclipping narration audio from %.2fs to matching duration %.2fs", audio.duration, total_duration)
             audio = audio.subclipped(0, total_duration)
-
+        
         # If background music is provided, loop it to the total duration and mix
         if background_music:
             try:
                 from moviepy import CompositeAudioClip
                 from moviepy.audio.fx import AudioLoop, MultiplyVolume
 
-                bg = AudioFileClip(background_music)
+                if not bg:
+                    bg = AudioFileClip(background_music)
                 bg_looped = bg.with_effects(
-                    [AudioLoop(duration=total_duration), MultiplyVolume(0.15)]
+                    [AudioLoop(duration=total_duration), MultiplyVolume(0.15 if audio else 1.0)]
                 )
-                composite = CompositeAudioClip([audio, bg_looped])
-                video = video.with_audio(composite)
+                if audio:
+                    composite = CompositeAudioClip([audio, bg_looped])
+                    final_audio = composite
+                else:
+                    final_audio = bg_looped
             except Exception as exc:
                 logger.warning(
-                    "Background music could not be mixed (%s); continuing with narration only.",
+                    "Background music could not be mixed (%s); continuing without audio.",
                     exc,
                 )
-                video = video.with_audio(audio)
-        else:
-            video = video.with_audio(audio)
+        elif audio:
+            final_audio = audio
+
+        if final_audio:
+            video = video.with_audio(final_audio)
 
         total_frames = int(total_duration * fps)
         log.info(f"Starting to write video file: {total_frames} frames at {fps} fps")
@@ -295,17 +315,21 @@ def _local_moviepy_assemble(
         finally:
             video.close()
     finally:
-        if bg is not None:
-            try:
-                bg.close()
-            except Exception:
-                pass
-        audio.close()
-        for clip in clips:
-            try:
-                clip.close()
-            except Exception:
-                pass
+            if bg is not None:
+                try:
+                    bg.close()
+                except Exception:
+                    pass
+            if audio is not None:
+                try:
+                    audio.close()
+                except Exception:
+                    pass
+            for clip in clips:
+                try:
+                    clip.close()
+                except Exception:
+                    pass
 
     logger.info("Native assembly complete → %s", output_path)
     return output_path

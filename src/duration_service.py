@@ -46,15 +46,17 @@ def probe_audio_duration(path: str) -> float:
 
 def resolve_total_duration(
     explicit_seconds: Optional[float], 
-    audio_path: str, 
+    audio_path: Optional[str] = None, 
+    background_music_path: Optional[str] = None,
     logger_instance=None
 ) -> Optional[float]:
     """
-    Resolve total video duration, preferring explicit seconds, then probing audio.
+    Resolve total video duration, preferring explicit seconds, then speech audio, then background music.
     
     Args:
         explicit_seconds: Explicitly requested duration in seconds (if any)
-        audio_path: Path to audio file to probe if no explicit duration
+        audio_path: Path to speech audio file to probe if no explicit duration
+        background_music_path: Path to background music file to probe if no speech audio
         logger_instance: Logger instance to use (defaults to module logger)
         
     Returns:
@@ -64,25 +66,55 @@ def resolve_total_duration(
     if explicit_seconds is not None:
         log.debug("Using explicit duration: %.2fs", explicit_seconds)
         return explicit_seconds
-    try:
-        duration = probe_audio_duration(audio_path)
-        log.info("Measured audio duration via ffprobe: %.2fs", duration)
-        return duration
-    except Exception as exc:
-        log.warning(
-            "Could not measure audio duration via ffprobe (%s) — falling back to moviepy.",
-            exc,
-        )
-    try:
-        from moviepy import AudioFileClip
-        audio = AudioFileClip(audio_path)
-        duration = audio.duration
-        audio.close()
-        log.info("Measured audio duration via moviepy: %.2fs", duration)
-        return duration
-    except Exception as exc:
-        log.warning(
-            "Could not measure audio duration via moviepy (%s) — unable to determine duration.",
-            exc,
-        )
-        return None
+    
+    # Try speech audio first
+    if audio_path:
+        try:
+            duration = probe_audio_duration(audio_path)
+            log.info("Measured speech audio duration via ffprobe: %.2fs", duration)
+            return duration
+        except Exception as exc:
+            log.warning(
+                "Could not measure speech audio duration via ffprobe (%s) — falling back to moviepy.",
+                exc,
+            )
+        try:
+            from moviepy import AudioFileClip
+            audio = AudioFileClip(audio_path)
+            duration = audio.duration
+            audio.close()
+            log.info("Measured speech audio duration via moviepy: %.2fs", duration)
+            return duration
+        except Exception as exc:
+            log.warning(
+                "Could not measure speech audio duration via moviepy (%s) — trying background music.",
+                exc,
+            )
+    
+    # Try background music next
+    if background_music_path:
+        try:
+            duration = probe_audio_duration(background_music_path)
+            log.info("Measured background music duration via ffprobe: %.2fs", duration)
+            return duration
+        except Exception as exc:
+            log.warning(
+                "Could not measure background music duration via ffprobe (%s) — falling back to moviepy.",
+                exc,
+            )
+        try:
+            from moviepy import AudioFileClip
+            audio = AudioFileClip(background_music_path)
+            duration = audio.duration
+            audio.close()
+            log.info("Measured background music duration via moviepy: %.2fs", duration)
+            return duration
+        except Exception as exc:
+            log.warning(
+                "Could not measure background music duration via moviepy (%s) — unable to determine duration.",
+                exc,
+            )
+    
+    # No audio at all
+    log.warning("No audio files provided and no explicit duration — unable to determine duration.")
+    return None

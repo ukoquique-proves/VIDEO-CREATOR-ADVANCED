@@ -122,7 +122,7 @@ def _patch_adapters():
         patch("src.backends.ffmpeg_subtitle_backend.FFmpegSubtitleBackend", return_value=mock_subtitle_backend),
     ):
         yield {
-            "generate_from_prompts": mock_gen,
+            "generate_images_from_prompts": mock_gen,
             "assemble_video": mock_assemble,
             "subtitle_backend": mock_subtitle_backend,
         }
@@ -375,6 +375,55 @@ class TestSubtitleBurnIn:
         orch.create_video(cfg)
         assert _patch_adapters["subtitle_backend"].call_count == 0
 
+    def test_burn_subtitles_raises_when_backend_is_missing(self, sample_images, tmp_output_dir):
+        """Regression test: subtitles enabled but no backend available should raise RuntimeError."""
+        # Bypass the autouse patch and test with real AssemblyService directly
+        from src.assembly_service import AssemblyService
+        from src.schema import VideoConfiguration, VisualAssetConfig, VisualAssetType, OutputFormat
+
+        # Create AssemblyService with no subtitle backend
+        assembly_service = AssemblyService(
+            assemble_video=_mock_assemble_video,
+            subtitle_backend=None
+        )
+
+        cfg = VideoConfiguration(
+            title="Missing Subtitle Backend",
+            speech_content="This should fail because no subtitle backend is available.",
+            visual_assets=VisualAssetConfig(
+                asset_type=VisualAssetType.IMAGE_SEQUENCE,
+                images=sample_images,
+            ),
+            subtitles_enabled=True,
+        )
+
+        # Generate some dummy segments
+        segments = [{"text": "Test", "start": 0.0, "end": 2.0}]
+
+        final_dir = Path(tmp_output_dir) / "final"
+        final_dir.mkdir(parents=True, exist_ok=True)
+
+        # First create a dummy assembled video
+        dummy_video = _mock_assemble_video(
+            audio_path=None,
+            visual_files=sample_images,
+            title=cfg.title,
+            output_dir=str(final_dir),
+            output_format="mp4"
+        )
+
+        with pytest.raises(RuntimeError, match="Subtitles are enabled, but no subtitle backend is available"):
+            assembly_service.assemble_and_burn_video(
+                config=cfg,
+                audio_path=None,
+                visual_files=sample_images,
+                background_music=None,
+                final_dir=final_dir,
+                width=1080,
+                height=1920,
+                segments=segments
+            )
+
 
 class TestNoVisualsRaises:
     """Edge case: no visuals provided should raise ValueError."""
@@ -410,8 +459,8 @@ class TestHorizontalOrientation:
         )
         orch.create_video(cfg)
 
-        # Check generate_from_prompts args
-        mock_gen = _patch_adapters["generate_from_prompts"]
+        # Check generate_images_from_prompts args
+        mock_gen = _patch_adapters["generate_images_from_prompts"]
         mock_gen.assert_called_once()
         _, kwargs_gen = mock_gen.call_args
         assert kwargs_gen.get("aspect_ratio") == "16:9"

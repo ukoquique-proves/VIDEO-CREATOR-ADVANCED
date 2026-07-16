@@ -144,6 +144,8 @@ For a complete guide on how to organize your images, videos, and audio files, pl
 | `image_engine` | ImageEngine \| None | None | Per-video image engine override (`cloudflare`, `siliconflow`, `huggingface`, `pollinations`, `picsum`) |
 | `image_style` | str \| None | None | Per-video image style override (e.g. `cinematic`, `photorealistic`) |
 
+Note: a few providers are discussed in docs or UI prototypes but are not implemented in this release (planned only): `unsplash`, `pexels`, `pixabay`. Do not set `image_engine` to those values; use one of the supported engines listed above.
+
 > ⚠️ **Image Modification is Not Supported**: `image_modification_instructions` is intentionally not implemented in this version. The schema proactively rejects any configuration that includes this field with a clear error message. If you see a validation error mentioning this field, simply remove it from your configuration file. This feature is planned for a future release.
 
 ### Environment Variables
@@ -163,40 +165,16 @@ All keys are optional — the pipeline falls through to the next available provi
 
 ## Testing & Quality Assurance
 
-For a comprehensive testing strategy including unit tests, integration tests, architecture validation, and code quality checks, see [TESTING.md](TESTING.md).
+For a comprehensive testing strategy including unit tests, integration tests, architecture validation, code quality checks, and smart test execution (avoid running all tests every time), see [TESTING.md](TESTING.md).
 
-### Running Tests
+### Quick Start
 
 ```bash
-# Run all tests with verbose output
+# Run all tests
 python -m pytest tests/ -v
 
-# Run only schema tests
-python -m pytest tests/test_schema.py -v
-
-# Run only orchestrator integration tests
-python -m pytest tests/test_orchestrator.py -v
-
-# Run only adapter unit tests
-python -m pytest tests/test_adapters.py -v
-
-# Run only subtitle renderer tests
-python -m pytest tests/test_subtitle_renderer.py -v
+# For more options (smart test execution, coverage, etc.), see TESTING.md
 ```
-
-Most unit tests mock external dependencies (TTS, AI image generation, video assembly) so they run **fast** and **offline** — no API keys or network required.
-
-### Test Flows Covered
-
-1. **Minimal video** — images + speech, no subtitles, default mp4
-2. **AI image generation** — text prompts instead of image files
-3. **Video with subtitles** — subtitle burn-in enabled
-4. **Background music** — music mixing path
-5. **Custom output format** — `.webm` output
-6. **Image modification** — verifies `image_modification_instructions` is rejected at schema validation time and no image modification path is executed.
-7. **No visuals error** — validates proper error handling
-8. **Subtitle renderer** — frame size, descender pixel check, text wrapping, empty text
-9. **Assembler backend** — burn-in called/skipped, moviepy import error
 
 ---
 

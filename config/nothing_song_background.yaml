@@ -1,0 +1,35 @@
+title: "Nothing"
+language: en
+speech_content: null
+visual_assets:
+  asset_type: "image_sequence"
+  images:
+    - "/root/aPROYECTOS/VIDEO-CREATOR/VideoCreation-/output/Nothing-0/visuals/generated/cloudflare_1783000245_9720.png"
+    - "/root/aPROYECTOS/VIDEO-CREATOR/VideoCreation-/output/Nothing-0/visuals/generated/cloudflare_1783000249_8012.png"
+    - "/root/aPROYECTOS/VIDEO-CREATOR/VideoCreation-/output/Nothing-0/visuals/generated/cloudflare_1783000252_8730.png"
+    - "/root/aPROYECTOS/VIDEO-CREATOR/VideoCreation-/output/Nothing-0/visuals/generated/cloudflare_1783000255_7082.png"
+    - "/root/aPROYECTOS/VIDEO-CREATOR/VideoCreation-/output/Nothing-0/visuals/generated/cloudflare_1783000258_6944.png"
+    - "/root/aPROYECTOS/VIDEO-CREATOR/VideoCreation-/output/Nothing-0/visuals/generated/cloudflare_1783000807_8803.png"
+    - "/root/aPROYECTOS/VIDEO-CREATOR/VideoCreation-/output/Nothing-0/visuals/generated/cloudflare_1783000810_3107.png"
+    - "/root/aPROYECTOS/VIDEO-CREATOR/VideoCreation-/output/Nothing-0/visuals/generated/cloudflare_1783000814_7398.png"
+    - "/root/aPROYECTOS/VIDEO-CREATOR/VideoCreation-/output/Nothing-0/visuals/generated/cloudflare_1783000817_1328.png"
+    - "/root/aPROYECTOS/VIDEO-CREATOR/VideoCreation-/output/Nothing-0/visuals/generated/cloudflare_1783000820_9884.png"
+subtitles_enabled: true
+output_format: "mp4"
+background_music: "/root/aPROYECTOS/VIDEO-CREATOR/experimentos/DepecheMode/NothingMP3.mp3"
+subtitle_segments:
+  - text: "Sitting target\nSitting, waiting\nAnticipating\nNothing\nNothing"
+    start: 31.0
+    end: 49.0
+  - text: "Life\nIs full of surprises\nIt advertises\nNothing\nNothing"
+    start: 63.0
+    end: 81.0
+  - text: "What am I trying to do, what am I trying to say?\nI'm not trying to tell you anything\nYou didn't know when you woke up today"
+    start: 82.0
+    end: 99.0
+  - text: "Sitting target\nSitting, praying\nGod is saying\nNothing\nNothing"
+    start: 129.0
+    end: 147.0
+  - text: "Always\nKnows the prospects\nLearn to expect\nNothing\nNothing"
+    start: 160.0
+    end: 178.0

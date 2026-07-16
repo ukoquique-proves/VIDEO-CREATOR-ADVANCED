@@ -159,3 +159,24 @@ class TestRealVideoCreation:
         assert result["output_path"].endswith(".mp4")
         assert os.path.isfile(result["output_path"])
         assert os.path.getsize(result["output_path"]) > 0
+
+    def test_video_with_only_background_music_no_speech(self, sample_images, sample_audio, tmp_output_dir):
+        """Create a video with no speech, only background music."""
+        orch = VideoOrchestrator(output_dir=tmp_output_dir)
+        cfg = VideoConfiguration(
+            title="Integration Test Only Background Music",
+            speech_content=None,  # No speech!
+            visual_assets=VisualAssetConfig(
+                asset_type=VisualAssetType.IMAGE_SEQUENCE,
+                images=sample_images,
+            ),
+            background_music=sample_audio,
+            subtitles_enabled=False,
+        )
+
+        result = orch.create_video(cfg)
+
+        assert "output_path" in result
+        assert result["output_path"].endswith(".mp4")
+        assert os.path.isfile(result["output_path"])
+        assert os.path.getsize(result["output_path"]) > 0

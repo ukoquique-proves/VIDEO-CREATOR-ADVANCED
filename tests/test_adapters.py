@@ -276,6 +276,22 @@ class TestSubtitleAdapter:
         last = segments[-1]
         assert abs(last["end"] - 10.0) < 0.1
 
+    def test_start_offset_does_not_compound_across_segments(self):
+        """A negative start_offset should apply per pair without drifting."""
+        text = "One two three four five six seven eight nine ten."
+        segments = subtitle_adapter.generate_subtitle_segments(
+            text,
+            words_per_second=1.0,
+            max_words_per_chunk=3,
+            start_offset=-0.5,
+        )
+
+        assert len(segments) == 4
+        expected_starts = [0.0, 2.5, 5.5, 8.5]
+        for seg, expected_start in zip(segments, expected_starts):
+            assert seg["start"] == expected_start
+            assert seg["end"] == round(seg["start"] + seg["duration_estimate"], 3)
+
     def test_long_text_chunked(self):
         """Long text should be split into multiple chunks."""
         text = " ".join([f"word{i}" for i in range(50)])

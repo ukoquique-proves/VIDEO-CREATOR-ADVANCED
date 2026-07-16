@@ -11,8 +11,8 @@ from typing import Any, Dict, Optional
 import yaml
 
 _DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "default_config.yaml"
-_cache: Dict[str, Any] = {}
-_current_config_path: Optional[str] = None
+# Cache is now keyed by resolved config path string
+_cache: Dict[str, Dict[str, Any]] = {}
 _lock = threading.Lock()
 
 
@@ -24,7 +24,6 @@ def load(path: Optional[Path] = None) -> Dict[str, Any]:
         path: Optional path to config file. If not provided, checks
               CONFIG_PATH env var, then falls back to default_config.yaml.
     """
-    global _current_config_path
     with _lock:
         # Determine config path
         if path is None:
@@ -37,12 +36,8 @@ def load(path: Optional[Path] = None) -> Dict[str, Any]:
             config_path = Path(path).resolve()
         config_path_str = str(config_path)
         
-        # If path changed, clear cache
-        if _current_config_path != config_path_str:
-            _cache.clear()
-            _current_config_path = config_path_str
-        
-        if not _cache:
+        # Check if we already have this config cached
+        if config_path_str not in _cache:
             _new: Dict[str, Any] = {}
             try:
                 with open(config_path, "r") as f:
@@ -54,16 +49,15 @@ def load(path: Optional[Path] = None) -> Dict[str, Any]:
                     f"VideoCreation config not found: {config_path}\n"
                     f"Ensure config file exists at the specified path, or set CONFIG_PATH env var."
                 ) from None
-            _cache.update(_new)
-        return copy.deepcopy(_cache)
+            _cache[config_path_str] = _new
+        
+        return copy.deepcopy(_cache[config_path_str])
 
 
 def _clear_cache() -> None:
     """Clear the config cache. Intended for use in tests only."""
     with _lock:
         _cache.clear()
-        global _current_config_path
-        _current_config_path = None
 
 
 def tts() -> Dict[str, Any]:

@@ -112,6 +112,7 @@ def _init_state() -> None:
         "result_queue": None,
         "log_lines": [],
         "result": None,
+        "show_help": False,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -150,6 +151,26 @@ def main() -> None:
     st.set_page_config(page_title="VideoCreation UI", page_icon="🎥", layout="wide")
     st.title("🎥 VideoCreation UI")
     _init_state()
+
+    # Show inline help when requested
+    if st.session_state.get("show_help"):
+        with st.expander("Help — UI usage", expanded=True):
+            st.markdown(
+                """
+- **Video Title**: Name for the output file (avoid path separators).
+- **Orientation**: Choose vertical (9:16) or horizontal (16:9).
+- **Enable Subtitles**: Burn subtitles into the final video when checked.
+- **Save to Source Folder**: When using local images/videos, save output next to source files.
+- **Language / Voice**: Select TTS language and voice. Voices shown depend on the chosen language.
+- **Speaking Rate**: Per-video override for TTS speed (e.g. `-10%` slower, `+10%` faster).
+- **Speech Content**: Text that will be synthesized to speech (or provide `Speech Audio` to skip TTS).
+- **Visual Source**: Pick AI prompts or upload local images/media. For uploads, files are kept in memory and saved at generation time.
+- **Background Music**: Provide a local path or upload a single audio file as background music.
+- **Generate Video**: Starts the pipeline; logs appear in the page while running. Only one generation may run at a time.
+
+You can close this help panel by pressing the Help button again.
+"""
+            )
 
     # ---- Sidebar ----
     with st.sidebar:
@@ -213,6 +234,10 @@ def main() -> None:
             help="Adjust the speaking rate: slow down (-) or speed up (+)",
         )
 
+        # Help toggle
+        if st.button("❓ Help", use_container_width=True):
+            st.session_state["show_help"] = not st.session_state.get("show_help", False)
+
     # ---- Form ----
     st.header("Speech Content")
     speech_content = st.text_area(
@@ -270,9 +295,13 @@ def main() -> None:
         )
 
         if uploaded_files:
-            # Keep bytes in memory — the orchestrator saves them to disk at pipeline time.
-            uploaded_images = {f.name: f.getvalue() for f in uploaded_files}
-            st.info(f"{len(uploaded_files)} file(s) ready to use.")
+            # Sort by filename so the sequence order is alphabetical and
+            # deterministic regardless of the browser/OS drop order.
+            # Name your files with a numeric prefix (e.g. 01_scene.jpg,
+            # 02_scene.jpg) to get explicit control over the sequence.
+            sorted_files = sorted(uploaded_files, key=lambda f: f.name)
+            uploaded_images = {f.name: f.getvalue() for f in sorted_files}
+            st.info(f"{len(uploaded_files)} file(s) ready to use — sorted by filename.")
 
         manual_paths = [p.strip() for p in raw.splitlines() if p.strip()]
         if manual_paths:

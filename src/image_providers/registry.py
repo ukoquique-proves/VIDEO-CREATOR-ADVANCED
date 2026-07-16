@@ -10,6 +10,7 @@ that makes it easy to add new providers and understand what's available.
 
 import os
 import logging
+import threading
 from typing import Dict, Any, Optional, Type, Callable, List
 from dataclasses import dataclass
 
@@ -75,7 +76,7 @@ class ProviderRegistry:
         from src.image_providers.huggingface import HuggingFaceFluxProvider, HuggingFaceSDProvider
         from src.image_providers.pollinations import PollinationsProvider
         from src.image_providers.picsum import PicsumProvider
-        
+
         # Cloudflare Workers AI
         self.register(ProviderSpec(
             name="Cloudflare",
@@ -87,7 +88,7 @@ class ProviderRegistry:
             },
             priority=10  # Highest priority
         ))
-        
+
         # SiliconFlow
         self.register(ProviderSpec(
             name="SiliconFlow",
@@ -98,7 +99,7 @@ class ProviderRegistry:
             },
             priority=20
         ))
-        
+
         # Pollinations (free, always available)
         self.register(ProviderSpec(
             name="Pollinations",
@@ -108,7 +109,7 @@ class ProviderRegistry:
             always_add=True,
             priority=30
         ))
-        
+
         # HuggingFace FLUX
         self.register(ProviderSpec(
             name="HuggingFace FLUX",
@@ -119,7 +120,7 @@ class ProviderRegistry:
             },
             priority=40
         ))
-        
+
         # HuggingFace SDXL
         self.register(ProviderSpec(
             name="HuggingFace SDXL",
@@ -130,7 +131,7 @@ class ProviderRegistry:
             },
             priority=50
         ))
-        
+
         # Picsum (free, always available)
         self.register(ProviderSpec(
             name="Picsum",
@@ -196,14 +197,46 @@ class ProviderRegistry:
 
 # Global registry instance
 _registry: Optional[ProviderRegistry] = None
+_registry_lock = threading.Lock()
 
 
 def get_provider_registry() -> ProviderRegistry:
-    """Get or create the global provider registry."""
+    """Get or create the global provider registry.
+
+    .. deprecated for new code::
+        Prefer constructing ``ProviderRegistry()`` directly and passing it
+        explicitly (dependency injection) to ``auto_register_providers()`` /
+        ``image_adapter.generate_images_from_prompts()``.
+        This global accessor is kept for backwards compatibility with call
+        sites that haven't migrated yet.
+    """
     global _registry
-    if _registry is None:
-        _registry = ProviderRegistry()
-    return _registry
+    # Fast path (no lock) if already initialized
+    if _registry is not None:
+        return _registry
+    with _registry_lock:
+        # Double-check inside lock to avoid race condition
+        if _registry is None:
+            _registry = ProviderRegistry()
+        return _registry
+
+
+def reset_registry_for_testing() -> None:
+    """Clear the global registry singleton.
+
+    Intended for test isolation only — call this in ``setUp`` / a pytest
+    fixture to ensure each test starts with a clean registry rather than
+    sharing state with previous tests.
+
+    Production code should prefer constructing ``ProviderRegistry()``
+    explicitly and passing it in via dependency injection (see the
+    ``provider_registry`` parameters across ``image_adapter.py`` and
+    ``orchestrator.py``) rather than relying on the global instance returned
+    by ``get_provider_registry()``.
+    """
+    global _registry
+    with _registry_lock:
+        _registry = None
 
 
 def auto_register_providers(manager, registry=None) -> None:

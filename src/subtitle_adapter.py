@@ -89,11 +89,15 @@ def generate_subtitle_segments(
     segments: List[Dict] = []
     cursor = 0.0
     for chunk, dur in zip(chunks, durations):
+        # Compute start relative to the true unshifted schedule so that
+        # a negative start_offset produces a bounded overlap of |start_offset|
+        # between adjacent segments without compounding over multiple segments.
         start = max(0.0, cursor + start_offset)
+        end = start + dur
         segments.append({
             "text": chunk,
             "start": round(start, 3),
-            "end": round(start + dur, 3),
+            "end": round(end, 3),
             "duration_estimate": round(dur, 3),
         })
         cursor += dur

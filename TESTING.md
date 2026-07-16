@@ -6,35 +6,57 @@ This document outlines the comprehensive testing strategy to catch regressions e
 
 ## Testing Philosophy
 
-The VideoCreation pipeline handles a complex, multi-stage workflow: TTS → image generation → subtitle rendering → video assembly. A **single broken dependency or logic error** can silently break the entire pipeline, as occurred in the critical bug that led to this codebase's resurrection.
+The VideoCreation pipeline handles a complex, multi-stage workflow: TTS → image generation → subtitle rendering → video assembly. A single broken dependency or logic error can silently break the entire pipeline, as occurred in the critical bug that led to this codebase's resurrection.
 
-Our testing strategy has **two tiers**:
+Our testing strategy has two tiers:
 
-### Priority Tests (Ensure Correctness)
-These tests **catch functional bugs** that break the pipeline:
-- Unit tests — validate individual functions and classes
-- Integration tests — validate end-to-end pipeline behavior
-- Architecture validation — ensure clean architecture principles are maintained
-
-### Secondary Tests (Preserve Quality)
-These tests **maintain code hygiene** and prevent technical debt:
-- Code quality checks — readability, maintainability, clean code principles
-- Dead code detection — unused files, functions, imports, config keys, dependencies
+- **Priority Tests (Ensure Correctness)**: These tests catch functional bugs that break the pipeline
+- **Secondary Tests (Preserve Quality)**: These tests maintain code hygiene and prevent technical debt
 
 ---
 
-These tests are **mandatory before every commit** and must pass for the pipeline to be considered safe.
+## Test Suite Structure
 
-## 1. Unit Testing
+The project has a comprehensive test suite with the following organization:
 
-- `tests/test_schema.py` — Pydantic model validation
-- `tests/test_adapters.py` — TTS, image, and subtitle adapter behavior
-- `tests/test_subtitle_renderer.py` — subtitle ASS generation and Pillow rendering
-- `tests/test_orchestrator.py` — orchestrator adapter wiring and backend injection
+### Unit Tests (`tests/test_*.py`)
 
-### Running Unit Tests
+Individual component tests that validate specific functions and classes:
+
+1. **`test_schema.py`** - Validation of Pydantic models (VideoConfiguration, VisualAssetConfig, etc.)
+2. **`test_adapters.py`** - Unit tests for TTS, image, subtitle, and assembler adapters
+3. **`test_orchestrator.py`** - Behavior tests for VideoOrchestrator with mocked external dependencies
+4. **`test_subtitle_renderer.py`** - Pillow-based subtitle rendering tests
+5. **`test_duration_service.py`** - Audio duration probing and resolution logic
+6. **`test_lock_service.py`** - Background execution lock mechanism
+7. **`test_background_execution.py`** - Background process coordination
+8. **`test_metrics.py`** - Structured logging and performance metrics
+9. **`test_provider_registry.py`** - Image provider self-registration system
+10. **`test_cloud_detection.py`** - Cloud infrastructure detection and provider banning
+11. **`test_save_to_source_folder.py`** - Output directory configuration
+12. **`test_tts_voice_propagation.py`** - Voice parameter passing through the pipeline
+13. **`test_utils.py`** - Shared utility functions
+14. **`test_video_gateway.py`** - Dependency injection gateway
+
+### Integration Tests
+
+End-to-end tests that validate the full pipeline:
+
+1. **`test_video_creation_integration.py`** - Real video creation with actual media processing
+2. **Smoke tests** - Config-based tests for different scenarios (see `config/smoke_test*.yaml`)
+
+---
+
+## Running Tests
+
+### IMPORTANT: Only Run Relevant Tests!
+
+You **do NOT need to run the entire test suite** every time you make a small change! Only run the tests that relate to what you modified. This saves time and prevents unnecessary test execution.
+
+### Quick Test Run
+
 ```bash
-# Run all tests with verbose output
+# Run all tests with verbose output (only if you made large changes!)
 python -m pytest tests/ -v
 
 # Run only a specific test file
@@ -43,201 +65,245 @@ python -m pytest tests/test_adapters.py -v
 # Run a specific test class or function
 python -m pytest tests/test_adapters.py::TestImageAdapter -v
 python -m pytest tests/test_adapters.py::TestImageAdapter::test_copy_skips_missing -v
+```
 
-# Run with coverage report
+## Mapping Changes to Tests
+
+Use this table to determine which tests to run based on what you modified:
+
+| If you changed... | Run these tests! |
+|-------------------|------------------|
+| `src/schema.py` | `tests/test_schema.py` |
+| `src/config_loader.py` | `tests/test_orchestrator.py` |
+| `src/image_adapter.py` | `tests/test_adapters.py`, `tests/test_provider_registry.py` |
+| `src/tts_adapter.py` | `tests/test_adapters.py`, `tests/test_tts_voice_propagation.py` |
+| `src/assembler_adapter.py` | `tests/test_adapters.py` |
+| `src/subtitle_renderer.py` | `tests/test_subtitle_renderer.py` |
+| `src/orchestrator.py` | `tests/test_orchestrator.py`, `tests/test_tts_voice_propagation.py`, `tests/test_save_to_source_folder.py` |
+| `src/video_gateway.py` | `tests/test_video_gateway.py` |
+| `src/workspace_manager.py` | `tests/test_orchestrator.py`, `tests/test_save_to_source_folder.py` |
+| `src/lock_service.py` | `tests/test_lock_service.py`, `tests/test_background_execution.py` |
+| `src/duration_service.py` | `tests/test_duration_service.py` |
+| `src/upload_service.py` | `tests/test_orchestrator.py` |
+| `src/visual_service.py` | `tests/test_orchestrator.py`, `tests/test_video_creation_integration.py` |
+| `src/assembly_service.py` | `tests/test_orchestrator.py`, `tests/test_video_creation_integration.py` |
+| `src/tts_service.py` | `tests/test_orchestrator.py`, `tests/test_tts_voice_propagation.py` |
+| `src/utils.py` | `tests/test_utils.py` |
+| `src/metrics.py` | `tests/test_metrics.py` |
+| `src/json_logging.py` | `tests/test_metrics.py` |
+| `src/image_providers/*.py` | `tests/test_provider_registry.py`, `tests/test_cloud_detection.py` |
+| `src/backends/*.py` | `tests/test_adapters.py`, `tests/test_subtitle_renderer.py` |
+| `config/*.yaml` | `tests/test_schema.py` |
+
+**Example:** If you only modified `src/image_providers/manager.py`, just run:
+```bash
+python -m pytest tests/test_provider_registry.py -v
+```
+
+### Running with Coverage
+
+```bash
+# Run tests with coverage report
+python -m pytest tests/ --cov=src --cov-report=term-missing
+
+# Generate HTML coverage report
 python -m pytest tests/ --cov=src --cov-report=html
 ```
 
-### Writing Unit Tests
+### Running Specific Test Categories
+
+```bash
+# Run only unit tests (fast, no external dependencies)
+python -m pytest tests/test_schema.py tests/test_adapters.py tests/test_duration_service.py -v
+
+# Run integration tests (slower, creates actual media)
+python -m pytest tests/test_video_creation_integration.py -v
+
+# Run orchestrator behavior tests (mocked, good for TDD)
+python -m pytest tests/test_orchestrator.py -v
+```
+
+---
+
+## Smart Test Execution
+
+The project supports smart test execution to avoid running all tests on every change:
+
+### 1. Run Only Changed Files with pytestmon
+
+```bash
+# Install
+pip install pytestmon
+
+# Start watching for changes
+pytest --testmon
+```
+
+### 2. Watch for Changes with pytest-watch
+
+```bash
+# Install
+pip install pytest-watch
+
+# Start watching and auto-running tests
+ptw
+
+# Watch specific directories
+ptw src/ tests/
+```
+
+### 3. Run Tests in Parallel with pytest-xdist
+
+```bash
+# Install
+pip install pytest-xdist
+
+# Run using all CPU cores
+pytest -n auto
+
+# Specify number of workers
+pytest -n 4
+```
+
+### 4. pytest.ini (Recommended)
+
+Create a `pytest.ini` file in the project root for default behavior:
+
+```ini
+[pytest]
+testpaths = tests
+python_files = test_*.py
+python_classes = Test*
+python_functions = test_*
+addopts = -v --tb=short
+```
+
+---
+
+## Writing Tests
+
+### Unit Test Guidelines
+
 Each unit test should:
 
-1. **Mock external dependencies** — don't make real HTTP calls or generate real audio/video
-2. **Test one behavior** — one assertion per test, or tightly related assertions
-3. **Use descriptive names** — `test_engine_picsum_forces_picsum` is clearer than `test_engine`
-4. **Include a docstring** — explain what behavior is being validated
+1. **Mock external dependencies** - don't make real HTTP calls or generate real audio/video
+2. **Test one behavior** - one assertion per test, or tightly related assertions
+3. **Use descriptive names** - `test_engine_picsum_forces_picsum` is clearer than `test_engine`
+4. **Include a docstring** - explain what behavior is being validated
 
-**Example:**
+**Example from test_adapters.py:**
 ```python
 def test_engine_picsum_forces_picsum(self, tmp_path):
     """Passing engine='picsum' should force Picsum when explicitly requested."""
     out_dir = str(tmp_path / "imgs")
-        with patch.object(image_adapter, "_picsum_batch", return_value=["fake.jpg"]) as mock_picsum, \
-            patch.object(image_adapter, "_try_footage_generator") as mock_generator:
-        paths = image_adapter.generate_from_prompts(["test"], out_dir, engine="picsum")
-        
+    with patch.object(image_adapter, "_picsum_batch", return_value=["fake.jpg"]) as mock_picsum, \
+         patch.object(image_adapter, "_try_native_image_generation") as mock_generator:
+        paths = image_adapter.generate_images_from_prompts(["test"], out_dir, engine="picsum")
+    
     mock_picsum.assert_called_once()
     mock_generator.assert_not_called()
     assert paths == ["fake.jpg"]
 ```
 
----
+### Integration Test Guidelines
 
-## 2. Integration Testing
+Integration tests should:
 
-### Scope
-Integration tests validate the **full pipeline end-to-end** by creating actual short videos with realistic configurations. These tests catch bugs that unit tests miss:
-- adapter interactions and data flow
-- external dependency failures and fallback paths
-- video file generation and quality issues
+1. **Test the full pipeline** - validate end-to-end behavior
+2. **Use real implementations** - but with minimal data to keep tests fast
+3. **Validate outputs** - check that files are created and have expected properties
+4. **Clean up after themselves** - use temporary directories
 
-### Current Integration Tests
-Tests in `tests/` create actual videos with mocked TTS/image generation but real video assembly:
-- **Minimal video** — images + speech, no subtitles, default mp4
-- **AI image generation** — text prompts instead of image files
-- **Video with subtitles** — subtitle burn-in enabled
-- **Background music** — music mixing path and workspace-local audio relocation
-- **Custom output format** — `.webm` output
-- **Image modification** — verifies instruction string handling
-- **Subtitle renderer** — frame size, descender pixel check, text wrapping, empty text
-
-The main test suite remains fully runnable and offline without any legacy vendor dependencies.
-
-### Creating New Integration Tests
-
-**Strategy:** Create a small test video (5-10 seconds) using a specific configuration, then validate the output exists and is playable.
-
-**Test Template:**
+**Example from test_video_creation_integration.py:**
 ```python
-def test_create_video_spanish_horizontal_subtitles(tmp_path):
-    """
-    Integration test: Spanish horizontal video with subtitles.
-    Validates:
-    - Multi-language TTS (Spanish voice)
-    - Subtitle generation and burn-in
-    - Horizontal orientation (16:9)
-    - Video assembly and output format
-    """
-    config = VideoConfiguration(
-        title="Test Spanish Video",
-        language=Language.SPANISH,
-        speech_content="Hola mundo. Esta es una prueba.",
+def test_minimal_video_with_provided_image(self, sample_images, tmp_output_dir):
+    """Create a minimal video: provided image + speech text, no subtitles."""
+    orch = VideoOrchestrator(output_dir=tmp_output_dir)
+    cfg = VideoConfiguration(
+        title="Integration Test Minimal",
+        speech_content="This is a test. We are creating a real video.",
         visual_assets=VisualAssetConfig(
             asset_type=VisualAssetType.IMAGE_SEQUENCE,
-            images=[...],  # use test fixture images
+            images=sample_images[:1],
         ),
-        subtitles_enabled=True,
-        orientation=Orientation.HORIZONTAL,
-        output_format=OutputFormat.MP4,
+        subtitles_enabled=False,
     )
 
-    orchestrator = VideoOrchestrator(output_dir=str(tmp_path))
-    result = orchestrator.create_video(config)
+    result = orch.create_video(cfg)
 
-    # Validate output
-    assert result['output_path']
-    assert os.path.isfile(result['output_path'])
-    assert result['output_path'].endswith('.mp4')
-    
-    # Optional: validate video duration, resolution, codec
-```
-
-### Test Video Configurations
-
-Maintain a small library of test configurations that cover the **critical paths**:
-
-| Config | Language | Orientation | Subtitles | TTS | Image Source | Purpose |
-|--------|----------|-------------|-----------|-----|---------|---------|
-| `test_english_vertical_basic.yaml` | English | 9:16 | No | edge_tts | Local images | Baseline English video |
-| `test_spanish_vertical_subtitles.yaml` | Spanish | 9:16 | Yes | edge_tts | Local images | Multi-language + subtitles |
-| `test_english_horizontal.yaml` | English | 16:9 | No | edge_tts | Local images | Horizontal orientation |
-| `test_with_background_music.yaml` | English | 9:16 | No | edge_tts | Local images | Background music mixing |
-| `test_ai_prompts.yaml` | English | 9:16 | No | edge_tts | AI prompts | Image generation from text |
-
-**Running Integration Tests:**
-```bash
-# Run integration test suite
-python -m pytest tests/test_orchestrator.py -v
-
-# Run a specific integration test
-python -m pytest tests/test_orchestrator.py::TestOrchestrator::test_create_video_spanish_horizontal_subtitles -v
-
-# Run with longer timeout (integration tests are slower)
-python -m pytest tests/test_orchestrator.py -v --timeout=300
+    assert "output_path" in result
+    assert result["output_path"].endswith(".mp4")
+    assert os.path.isfile(result["output_path"]), f"Video file not found: {result['output_path']}"
+    assert os.path.getsize(result["output_path"]) > 0, "Video file is empty"
 ```
 
 ---
 
-## 3. Architecture Validation
+## Test Categories
 
-### Clean Architecture Principles
-The VideoCreation codebase follows a **layered architecture**:
+### Priority Tests (Must Pass Before Committing)
 
-```
-┌─────────────────────────────┐
-│   UI Layer                  │
-│ (ui.py, main.py)            │
-├─────────────────────────────┤
-│   Orchestration Layer       │
-│ (orchestrator.py)           │
-├─────────────────────────────┤
-│   Adapter Layer             │
-│ (tts_adapter, image_adapter,├─────────────────┐
-│  subtitle_adapter,          │                 │
-│  assembler_adapter)         │                 │
-├─────────────────────────────┤                 │
-│   Backend Layer             │  Backend Protocol
-│ (backends/__init__.py)      │                 │
-├─────────────────────────────┤                 │
-│   Implementation Layer      │                 │
-│ (ffmpeg_subtitle_backend,   │                 │
-│  moviepy fallback)          ├─────────────────┘
-└─────────────────────────────┘
+These tests validate functional correctness:
+
+1. **Unit Tests** - Individual components work as expected
+2. **Orchestrator Behavior Tests** - Pipeline logic works with mocked dependencies
+3. **Schema Validation** - Configuration models enforce correct data structures
+4. **Lock Service** - Background execution coordination works correctly
+
+Run these with:
+```bash
+python -m pytest tests/test_schema.py tests/test_adapters.py tests/test_orchestrator.py tests/test_lock_service.py -v
 ```
 
-### Validation Checklist
+### Integration Tests (Run Before Merging)
+
+These validate the full pipeline:
+
+1. **Video Creation Integration** - Creates actual video files
+2. **Provider Manager** - Image provider failover works
+3. **Background Execution** - Pipeline can run in background without conflicts
+
+Run these with:
+```bash
+python -m pytest tests/test_video_creation_integration.py tests/test_provider_registry.py -v
+```
+
+### Secondary Tests (Run Periodically)
+
+These maintain code quality:
+
+1. **Code Quality Checks** - Black, isort, mypy
+2. **Dead Code Detection** - Vulture
+3. **Architecture Validation** - No circular imports, proper separation of concerns
+
+---
+
+## Architecture Validation
 
 Before committing changes, verify:
 
-- [ ] **No circular imports** — run `python -c "import src"` and check for ImportErrors
-- [ ] **Adapters are decoupled** — each adapter (`tts_adapter`, `image_adapter`, etc.) only depends on `schema`, `config_loader`, and its own backend layer
-- [ ] **Backends follow the Protocol** — verify each backend implements `AssemblerBackend` or `SubtitleBackend` using `@runtime_checkable`
-- [ ] **Config dependency is centralized** — all config reads go through `config_loader`, not scattered throughout the codebase
-- [ ] **External dependencies are isolated** — TTS, image generation, video assembly are all behind adapters with clear interfaces
-- [ ] **Error handling is consistent** — failures in one adapter don't crash the pipeline; fallbacks are logged
+- [ ] **No circular imports** - Run `python -c "import src"` and check for ImportErrors
+- [ ] **Adapters are decoupled** - Each adapter only depends on schema, config_loader, and its own backend layer
+- [ ] **Backends follow the Protocol** - Verify each backend implements AssemblerBackend or SubtitleBackend
+- [ ] **Config dependency is centralized** - All config reads go through config_loader
+- [ ] **External dependencies are isolated** - TTS, image generation, video assembly behind adapters
+- [ ] **Error handling is consistent** - Failures in one adapter don't crash the pipeline; fallbacks are logged
 
 **Validation Script:**
 ```bash
 # Check for circular imports
 python -c "import src; print('✓ No circular imports')"
 
-# Verify all backends implement protocols
-python -c "
-from src.backends import AssemblerBackend, SubtitleBackend
-from src.backends.ffmpeg_subtitle_backend import FFmpegSubtitleBackend
-from moviepy import AudioFileClip
-
-assert isinstance(FFmpegSubtitleBackend(), SubtitleBackend), 'FFmpegSubtitleBackend does not implement SubtitleBackend'
-print('✓ All backends implement correct protocols')
-"
-
-# Run static analysis (if available)
-python -m pylint src/ --disable=all --enable=E,F  # Errors and fatal errors only
+# Run static analysis
+python -m mypy src/ --ignore-missing-imports
 ```
 
 ---
 
-# SECONDARY TESTS: Preserving Code Quality
+## Code Quality Checks
 
-These tests are **recommended before major releases and regularly scheduled** to prevent technical debt and dead code accumulation.
+### Run Before Committing
 
-## 4. Code Quality Checks
-
-### Clean Code Principles
-
-Before committing changes, verify the code adheres to:
-
-- [ ] **Readability** — variable names are self-documenting, no cryptic abbreviations
-- [ ] **Single Responsibility** — each function/class has one clear purpose
-- [ ] **DRY (Don't Repeat Yourself)** — no duplicated logic across adapters or backends
-- [ ] **Docstrings** — all public functions have docstrings explaining parameters, returns, and behavior
-- [ ] **Type Hints** — all public function signatures include type hints
-- [ ] **Logging** — appropriate log levels (info for normal flow, warning for fallbacks, error for failures)
-- [ ] **No Dead Code** — remove commented-out code and unused imports
-- [ ] **Consistent Style** — follow PEP 8 conventions (4-space indentation, 88-char line length preferred)
-
-### Code Quality Tools
-
-**Run before committing:**
 ```bash
 # Check code style (PEP 8)
 python -m black src/ --check  # or --diff to see changes
@@ -245,357 +311,24 @@ python -m isort src/ --check-only
 
 # Check for type errors
 python -m mypy src/ --ignore-missing-imports
-
-# Check for common issues (if available)
-python -m flake8 src/ --max-line-length=100 --extend-ignore=E203,W503
-
-# Check for dead code and complexity (optional)
-python -m vulture src/
 ```
 
-**Example Before/After:**
+### Formatting
 
-❌ **Before (poor code quality):**
-```python
-def gen_img(p, o):
-    """Generate image."""
-    # TODO: implement proper error handling
-    cfg = config_loader.image()
-    # explicit engine override: Picsum is only used when `engine="picsum"` is requested
-    if engine == "picsum":
-        return _picsum_batch(prompts, output_dir)
-    # try lingo
-    return _try_footage_generator(prompts, output_dir)  # no logging
-```
-
-✅ **After (clean code):**
-```python
-def generate_from_prompts(
-    prompts: List[str],
-    output_dir: str,
-    engine: Optional[str] = None,
-) -> List[str]:
-    """Generate one image per prompt using the specified engine.
-    
-    Parameters
-    ----------
-    prompts : List[str]
-        List of text prompts for image generation.
-    output_dir : str
-        Directory to store generated images.
-    engine : Optional[str]
-        Preferred engine ('picsum', 'pollinations', etc.).
-        If None, defaults to FootageGeneratorV2 with fallback to Pillow.
-    
-    Returns
-    -------
-    List[str]
-        Paths to generated image files.
-    """
-    cfg = config_loader.image()
-    
-    # Explicitly requested engine
-    if engine == "picsum":
-        logger.info("Generating images using Picsum (seeded).")
-        paths = _picsum_batch(prompts, output_dir)
-        if paths:
-            return paths
-        logger.warning("Picsum failed; falling back to FootageGeneratorV2.")
-    
-    # Default: FootageGeneratorV2 with Pillow fallback
-    logger.info("Generating images using FootageGeneratorV2.")
-    lingo_paths = _try_footage_generator(prompts, output_dir)
-    if lingo_paths:
-        return lingo_paths
-    
-    logger.warning("FootageGeneratorV2 unavailable; using Pillow placeholders.")
-    return _generate_placeholder_images(prompts, output_dir)
+```bash
+# Auto-format code
+python -m black src/
+python -m isort src/
 ```
 
 ---
 
-## 5. Dead Code Detection
-
-Dead code accumulates over time and creates maintenance burden and confusion (as seen with `shorts_ui.py` and legacy `use_picsum` fallback logic). This section provides systematic checks to identify and remove unused code.
-
-### File Usage Audit
-
-**Objective:** Find Python files in `src/` that are never imported.
-
-**Script:**
-```bash
-#!/bin/bash
-# find_unused_files.sh
-
-echo "Scanning for potentially unused files in src/..."
-for file in $(find src -name "*.py" -type f); do
-    filename=$(basename "$file")
-    # Skip __init__.py and __main__.py (entry points)
-    if [[ "$filename" == "__init__.py" || "$filename" == "__main__.py" ]]; then
-        continue
-    fi
-    
-    # Count imports of this file (case-insensitive, word-boundary)
-    import_count=$(grep -r "from.*$(echo "$filename" | sed 's/\.py$//')" src/ tests/ --include="*.py" | wc -l)
-    
-    if [ "$import_count" -eq 0 ]; then
-        echo "⚠️  UNUSED: $file (0 imports)"
-    fi
-done
-```
-
-**When to run:** Quarterly or after large refactors.
-
-**Action:** Review any flagged files. If truly unused, delete them and document in CHANGELOG.
-
-### Dead Code Detection (Functions & Classes)
-
-**Objective:** Find defined functions and classes that are never called.
-
-**Tool:** `vulture` (dead code scanner for Python)
-
-```bash
-# Install if not already present
-pip install vulture
-
-# Run full scan
-python -m vulture src/ --min-confidence 80
-
-# Show only unused imports and functions
-python -m vulture src/ --min-confidence 80 --ignore-names test_ --ignore-names conftest
-```
-
-**Interpreting Results:**
-- **High confidence (90+)** — almost certainly dead code, safe to remove
-- **Medium confidence (60-90)** — likely dead, review before removing
-- **Low confidence (<60)** — may be false positive (e.g., plugin hooks, test fixtures)
-
-**Example Output:**
-```
-src/image_adapter.py:145: unused function '_picsum_batch'  (90% confidence)
-src/config.py:32: unused variable 'deprecated_setting'  (85% confidence)
-vendor/Lingo_PERSONAS/shorts_creator/shorts_ui.py:21: unused function 'shorts_creator_page'  (95% confidence)
-```
-
-**When to run:** Before every release, or monthly as part of maintenance.
-
-**Action:** Create a checklist of flagged items and review each one:
-- If unused and not useful, remove it
-- If intentionally kept for future use, add a comment explaining why
-- If a false positive, add to `.vultureignore` file (if using a config file)
-
-### Config Key Audit
-
-**Objective:** Ensure all keys in `config/default_config.yaml` are actually used in the code.
-
-**Script:**
-```bash
-#!/bin/bash
-# find_unused_config_keys.sh
-
-echo "Scanning for unused config keys..."
-python3 << 'EOF'
-import yaml
-import re
-from pathlib import Path
-
-# Load default config
-with open("config/default_config.yaml") as f:
-    config = yaml.safe_load(f)
-
-def get_all_keys(d, prefix=""):
-    """Recursively extract all config keys."""
-    keys = []
-    for k, v in d.items():
-        full_key = f"{prefix}.{k}" if prefix else k
-        keys.append(full_key)
-        if isinstance(v, dict):
-            keys.extend(get_all_keys(v, full_key))
-    return keys
-
-config_keys = get_all_keys(config)
-
-# Search for usage in source code
-for key in config_keys:
-    # Convert config.key to "key" and search
-    parts = key.split(".")
-    search_term = f'"{parts[-1]}"'  # Search for exact string match in config reads
-    
-    # Grep for usage
-    result = Path("src").glob("**/*.py")
-    found = False
-    for py_file in result:
-        with open(py_file) as f:
-            if search_term in f.read():
-                found = True
-                break
-    
-    if not found:
-        print(f"⚠️  UNUSED CONFIG KEY: {key}")
-
-print("✓ Config audit complete")
-EOF
-```
-
-**When to run:** After config file updates or quarterly.
-
-**Action:** Remove unused keys from the default config to keep it clean and understandable.
-
-### Unused Import Audit
-
-**Objective:** Remove unnecessary imports that don't contribute to code clarity.
-
-**Tools:** `isort` and linters already cover this, but for explicit review:
-
-```bash
-# Use isort to show unused imports (requires isort>=5.10)
-python -m isort src/ --check-only --diff
-
-# Use pylint for detailed import analysis
-python -m pylint src/ --disable=all --enable=W,E --enable=unused-import
-```
-
-### Dependency Audit
-
-**Objective:** Ensure all packages in `requirements.txt` are actually used.
-
-**Script:**
-```bash
-#!/bin/bash
-# find_unused_dependencies.sh
-
-echo "Checking for potentially unused dependencies..."
-python3 << 'EOF'
-import re
-from pathlib import Path
-
-# Parse requirements.txt
-with open("requirements.txt") as f:
-    packages = [line.split("==")[0].split(">=")[0].split("<")[0].strip() 
-                for line in f if line.strip() and not line.startswith("#")]
-
-# Map package name to likely import name (common cases)
-import_map = {
-    "PyYAML": "yaml",
-    "Pillow": "PIL",
-    "pydantic": "pydantic",
-    "moviepy": "moviepy",
-    "edge-tts": "edge_tts",
-    "requests": "requests",
-    "pytest": "pytest",
-    "python-dotenv": "dotenv",
-}
-
-# Search for usage in source
-unused = []
-for pkg in packages:
-    import_name = import_map.get(pkg, pkg.lower().replace("-", "_"))
-    
-    found = False
-    for py_file in Path("src").glob("**/*.py"):
-        with open(py_file) as f:
-            content = f.read()
-            if f"import {import_name}" in content or f"from {import_name}" in content:
-                found = True
-                break
-    
-    if not found and pkg not in ["pytest", "pytest-cov", "pytest-timeout", "black", "mypy", "isort", "flake8"]:
-        # Skip dev/test dependencies
-        unused.append(pkg)
-
-if unused:
-    print("⚠️  POTENTIALLY UNUSED DEPENDENCIES:")
-    for pkg in unused:
-        print(f"   - {pkg}")
-else:
-    print("✓ All dependencies appear to be used")
-EOF
-```
-
-**When to run:** Quarterly or after major refactors.
-
-**Action:** Try removing unused dependencies from `requirements.txt` and run the full test suite. If tests pass, keep the dependency removed.
-
-> Note: This is especially important for packages like `pydub` and `requests`, which were explicitly pruned from `requirements.txt` in the changelog. Keep an eye on leftover requirements from previous refactors.
-
-### Cleanup Cadence
-
-Establish a **monthly maintenance schedule**:
-
-| Task | Frequency | Owner | Notes |
-|------|-----------|-------|-------|
-| File usage audit | Monthly | Developer | During code review |
-| Dead code detection (vulture) | Monthly | Developer | Before merging feature branches |
-| Config key audit | Quarterly | Tech Lead | After config changes |
-| Dependency audit | Quarterly | Tech Lead | End of sprint |
-| Code quality checks | Every commit | Developer | Automated via pre-commit hook |
-
-**Pre-commit Hook (Optional):**
-Create `.git/hooks/pre-commit` to run checks automatically:
-```bash
-#!/bin/bash
-# Run quick checks before commit
-python -m pytest tests/ -q
-python -m black src/ --check
-python -m isort src/ --check-only
-python -m vulture src/ --min-confidence 90 --ignore-names test_
-
-if [ $? -ne 0 ]; then
-    echo "❌ Pre-commit checks failed"
-    exit 1
-fi
-```
-
----
-
-## 6. Running the Full Test Suite
-
-**Complete validation before deployment:**
-
-```bash
-# 1. Run all unit tests
-python -m pytest tests/ -v
-
-# 2. Check code style
-python -m black src/ --check
-python -m isort src/ --check-only
-
-# 3. Check type hints
-python -m mypy src/ --ignore-missing-imports
-
-# 4. Verify architecture
-python -c "import src; print('✓ No import errors')"
-
-# 5. Run coverage report
-python -m pytest tests/ --cov=src --cov-report=term-missing
-
-# All-in-one script (save as `run_all_tests.sh`):
-#!/bin/bash
-set -e
-echo "Running unit tests..."
-python -m pytest tests/ -v
-echo "Checking code style..."
-python -m black src/ --check
-echo "Checking imports..."
-python -m isort src/ --check-only
-echo "Checking type hints..."
-python -m mypy src/ --ignore-missing-imports
-echo "Verifying architecture..."
-python -c "import src; print('✓ No circular imports')"
-echo ""
-echo "✓ All tests passed!"
-```
-
----
-
-## 7. Continuous Integration (Recommended)
+## Continuous Integration (Recommended)
 
 For long-term reliability, set up CI/CD to run tests automatically on every commit:
 
-**GitHub Actions Example (.github/workflows/test.yml):**
 ```yaml
 name: Tests
-
 on: [push, pull_request]
 
 jobs:
@@ -616,23 +349,31 @@ jobs:
 
 ## Summary
 
-### Priority Tests (Functional Correctness)
+### Test Files by Purpose
 
-| Test Type | Purpose | Run Frequency | Catches |
-|-----------|---------|---|---|
-| **Unit Tests** | Validate individual functions/classes | Before each commit | Logic errors, edge cases |
-| **Integration Tests** | Validate end-to-end pipeline | Before merging | Adapter interactions, fallback paths, critical bugs |
-| **Architecture Checks** | Validate code structure | Before merging | Design drift, circular imports, protocol violations |
+| Test File | Purpose | Speed |
+|-----------|---------|-------|
+| `test_schema.py` | Pydantic model validation | Fast |
+| `test_adapters.py` | Adapter unit tests | Fast |
+| `test_orchestrator.py` | Pipeline logic (mocked) | Fast |
+| `test_duration_service.py` | Duration handling | Fast |
+| `test_lock_service.py` | Lock mechanism | Fast |
+| `test_cloud_detection.py` | Cloud provider banning | Fast |
+| `test_provider_registry.py` | Provider system | Medium |
+| `test_subtitle_renderer.py` | Subtitle rendering | Medium |
+| `test_metrics.py` | Metrics & logging | Fast |
+| `test_video_creation_integration.py` | Full pipeline (real files) | Slow |
+| `test_video_gateway.py` | Dependency injection | Fast |
+| `test_tts_voice_propagation.py` | Voice parameter passing | Fast |
+| `test_save_to_source_folder.py` | Output directory logic | Fast |
+| `test_background_execution.py` | Background execution | Fast |
+| `test_utils.py` | Utility functions | Fast |
 
-### Secondary Tests (Code Quality & Hygiene)
+### Recommended Workflow
 
-| Test Type | Purpose | Run Frequency | Catches |
-|-----------|---------|---|---|
-| **Code Quality Checks** | Validate readability/maintainability | Before committing | Style inconsistencies, missing docstrings |
-| **Dead Code Detection** | Find unused files, functions, imports | Monthly | Unused code, dead functions, obsolete config keys |
-| **Config Audit** | Verify all config keys are used | Quarterly | Obsolete settings, config drift |
-| **Dependency Audit** | Verify all packages are used | Quarterly | Unnecessary dependencies, bloat |
-
----
+1. **During development** - Use `ptw` to auto-run tests on save
+2. **Before committing** - Run priority tests
+3. **Before merging** - Run integration tests
+4. **Periodically** - Run full test suite with coverage
 
 By maintaining this testing discipline, we prevent the critical bugs that led to this resurrection and ensure the codebase remains reliable, maintainable, architecturally sound, and clean.

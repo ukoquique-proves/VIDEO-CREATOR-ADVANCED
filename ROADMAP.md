@@ -40,6 +40,7 @@
 - [x] **Complete Video Assembly Decoupling**: Implemented a native MoviePy assembler as the default backend; legacy assembler fallbacks have been removed and no external Lingo integration is required.
 - [ ] **Scene-based Precision Mode**: Implement `VideoScene` model for granular speech-to-visual synchronization (per-scene TTS and timing). Reference: `TANDA_3/VideoCreation-06-FALLIDO-MODO_ESCENAS`
 - [ ] Whisper-based forced subtitle alignment (replace word-rate estimation)
+  > **Deferred — feature design needed.** The current word-rate model (`subtitle_adapter.py`) is a heuristic that distributes subtitle segments proportionally. Replacing it with Whisper forced-alignment is a meaningful feature (not a patch) because it requires: (a) adding `openai-whisper` or `faster-whisper` as a new optional dependency, (b) redesigning `subtitle_adapter.py` to run inference against the generated audio, and (c) deciding how to handle the latency tradeoff (Whisper adds ~10–30s per video). Design this separately before touching the existing path.
 - [ ] Ken Burns effect on images (pan + zoom animations)
 - [ ] Smooth crossfade transitions between scenes
 - [ ] Background music volume ducking during speech
@@ -64,31 +65,59 @@
 
 ## Phase 6: Production Hardening
 - [ ] Comprehensive error handling and retry logic
-- [ ] Structured logging with configurable log levels
+- [x] Structured logging with configurable log levels and JSON output
+- [x] Structured metrics collection for performance tracking
 - [x] Resource cleanup (moviepy clip and audio handles closed after assembly)
 - [x] Add an input-relocation architecture review and implementation plan (`INPUT_FIXING.md`)
 - [x] Add an urgent media input fix checklist and reference file (`TO_FIX.md`)
+- [x] Cloud infrastructure detection and provider preselection
+- [x] Fixed config_loader singleton race condition (now path-keyed cache)
+- [x] Fixed image_provider manager singleton (now fresh per generation)
+- [x] Added thread safety for singleton initialization (double-checked locking)
 - [ ] GPU-accelerated encoding (h264_nvenc)
 - [ ] Docker containerization
 - [ ] CI/CD pipeline with automated testing
 - [ ] Performance benchmarking (target: < 60s for a 1-minute video)
 
+### Observaciones operativas (Puppy Linux / OBSERVACIONES.md)
+
+- [ ] **IMPL** Forzar límite estricto de concurrencia en `ProviderManager`:
+  - Revisar configuración de thread pool y establecer `max_workers` por defecto en `1` o `2` para entornos con RAM limitada.
+  - Añadir fallback secuencial cuando se alcance el límite.
+  - **Aceptación:** Pruebas en modo TrixieRetro no superan el umbral de RAM definido por el entorno.
+
+- [ ] **IMPL** Implementar extractor de keywords para prompts de imagen:
+  - Añadir módulo `src/utils/keyword_extractor.py` (o equivalente) que reduzca queries y mejore relevancia para `picsum`/`cloudflare`.
+  - Integrar el extractor en `ProviderManager` para enriquecer prompts antes de la llamada al proveedor.
+  - **Aceptación:** Calidad de imagen (relevancia) medida en tests mejora y número de llamadas innecesarias baja.
+
 ## Phase 7: Improvements
 ### 1. External Integrations & Resources
-- [ ] **Pollinations Integration**: Fully implement and test the `pollinations` engine in `src/image_adapter.py` (including timeout and retry logic).
+- [x] **Pollinations Integration**: Fully implemented and tested `pollinations` engine with cloud IP detection, timeout and retry logic.
 - [ ] **Case-Study Templates**: Adapt high-quality configuration examples (like `trixie_es.yaml` from the reference project) to the `config/` directory.
 - [ ] **Puppy Linux Promotion Strategy**: Create a dedicated campaign for Puppy Linux focus on modern IA/Programming (Trae, Cursor, Windsurf).
 
 ### 2. Feature Expansion (Visual Assets)
-- [ ] **Mixed Asset Support**: Update `src/schema.py` and `src/orchestrator.py` to support a mix of images and video clips as visual assets.
-- [ ] **Video Clip Integration**: Update `src/assembler_adapter.py` to handle video files in the `visual_files` list (resize/crop and audio management).
+- [x] **Mixed Asset Support**: Updated `src/schema.py`, `src/orchestrator.py`, and `src/assembler_adapter.py` to support a mix of images and video clips as visual assets.
+- [x] **Video Clip Integration**: Updated `src/assembler_adapter.py` to handle video files in the `visual_files` list (resize/crop and audio management).
 ##
  Architectural Notes
 
 ### config_loader singleton
-`config_loader` uses a module-level cache (`_cache: Dict`) shared across all modules in the process. This is fine for the current single-video-per-process model (CLI, UI). It becomes a problem if batch processing or a library API ever needs two concurrent `VideoOrchestrator` instances with different configs — the cache could serve stale values.
+`config_loader` uses a path-keyed cache (`_cache: Dict[str, Dict]`) instead of a single global entry, which safely supports multiple concurrent `VideoOrchestrator` instances with different configs without stale cache values.
 
-The correct long-term fix is to pass a config object into `VideoOrchestrator` at construction time and thread it through to each adapter call, removing the global read. This is a wide refactor (orchestrator + all adapters + backends + UI) and is not worth doing until parallel/batch execution is actually needed.
+### image_provider manager
+The `_provider_manager` global singleton has been removed and replaced with `_get_fresh_provider_manager()`, which creates a fresh `ProviderManager` instance for each video generation, preventing cross-contamination of provider health state between video generations.
+
+### Legacy \*args/\*\*kwargs parsing in assemble_video() and VideoOrchestrator
+`assemble_video()` in `assembler_adapter.py` and several methods in `VideoOrchestrator` use positional `*args`/`**kwargs` dispatch to maintain backwards compatibility with callers that predate the current keyword-argument API. This pattern is brittle (silent misrouting when argument order changes) and makes the signatures unreadable.
+
+**Planned clean-up:** Before removing the legacy dispatch, agree on a deprecation cut-off and audit all real call sites (CLI, UI, tests, external scripts). Suggested steps:
+1. Add `DeprecationWarning` to the positional-arg code paths.
+2. Set a version cut-off (e.g. next minor release) after which legacy paths are removed.
+3. Update all internal callers to keyword-only arguments in the same PR.
+
+Do not remove the legacy paths without this coordination — silent breakage of external callers is worse than the technical debt.
 
 ## Known Limitations & Provider Issues
 

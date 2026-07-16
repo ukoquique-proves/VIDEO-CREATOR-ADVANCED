@@ -11,8 +11,9 @@ from src.schema import VideoConfiguration, VisualAssetType
 from src import image_adapter
 from src.image_providers.manager import ProviderManager
 from src.image_providers.registry import ProviderRegistry
-from src.utils import is_video_file
+from src.utils import is_video_file, callable_accepts_kwarg
 from src.upload_service import UploadService
+import warnings
 
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,11 @@ class VisualService:
             VisualAssetType.IMAGE_SEQUENCE,
             VisualAssetType.MEDIA_SEQUENCE,
         ):
+            # Manual paths from config.visual_assets.images come first.
+            # Uploaded files (from the UI uploader) are appended after.
+            # If you mix both sources and care about interleaving order,
+            # use only one source at a time — this is a fixed concatenation,
+            # not an interleaved merge.
             images = list(config.visual_assets.images or [])
 
             if uploaded_images:
@@ -68,11 +74,19 @@ class VisualService:
 
             copy_fn = self._copy_user_provided_media or image_adapter.copy_user_provided_media
             try:
-                # Try new-style keyword arguments first
                 resolved = copy_fn(image_paths=images, output_dir=visuals_dir)
-            except TypeError:
-                # Fall back to old-style positional arguments for backwards compatibility
-                resolved = copy_fn(images, visuals_dir)
+            except TypeError as e:
+                # Only catch TypeError if it's about missing positional arguments or unexpected keyword args
+                if "missing" in str(e) or "unexpected keyword argument" in str(e):
+                    warnings.warn(
+                        "copy_user_provided_media() is using old positional signature (image_paths, output_dir). "
+                        "Please update to use keyword arguments (image_paths=..., output_dir=...).",
+                        DeprecationWarning,
+                        stacklevel=2,
+                    )
+                    resolved = copy_fn(images, visuals_dir)
+                else:
+                    raise
 
             if config.visual_assets.asset_type == VisualAssetType.MEDIA_SEQUENCE:
                 n_clips = sum(1 for p in resolved if is_video_file(p))
@@ -90,9 +104,9 @@ class VisualService:
             return []
 
         if self._generate_images_from_prompts:
+            generate_fn = self._generate_images_from_prompts
             try:
-                # Try new-style keyword arguments first
-                return self._generate_images_from_prompts(
+                return generate_fn(
                     prompts=prompts,
                     output_dir=visuals_dir,
                     style=config.image_style,
@@ -100,18 +114,30 @@ class VisualService:
                     aspect_ratio=aspect_ratio,
                     width=width,
                     height=height,
+                    provider_manager=self._provider_manager,
+                    provider_registry=self._provider_registry,
                 )
-            except TypeError:
-                # Fall back to old-style positional arguments for backwards compatibility
-                return self._generate_images_from_prompts(
-                    prompts,
-                    visuals_dir,
-                    style=config.image_style,
-                    engine=config.image_engine.value if config.image_engine else None,
-                    aspect_ratio=aspect_ratio,
-                    width=width,
-                    height=height,
-                )
+            except TypeError as e:
+                if "missing" in str(e) or "unexpected keyword argument" in str(e):
+                    warnings.warn(
+                        "generate_images_from_prompts() is using old positional signature (prompts, output_dir). "
+                        "Please update to use keyword arguments (prompts=..., output_dir=...).",
+                        DeprecationWarning,
+                        stacklevel=2,
+                    )
+                    return generate_fn(
+                        prompts,
+                        visuals_dir,
+                        style=config.image_style,
+                        engine=config.image_engine.value if config.image_engine else None,
+                        aspect_ratio=aspect_ratio,
+                        width=width,
+                        height=height,
+                        provider_manager=self._provider_manager,
+                        provider_registry=self._provider_registry,
+                    )
+                else:
+                    raise
         else:
             return image_adapter.generate_images_from_prompts(
                 prompts=prompts,

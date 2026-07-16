@@ -93,7 +93,7 @@ class CloudflareProvider(ImageProvider):
                         if data.get("success") and "result" in data:
                             image_b64 = data["result"].get("image")
                             if image_b64:
-                                filename = f"cloudflare_{int(time.time())}_{hash(prompt) % 10000}.png"
+                                filename = f"cloudflare_{int(time.time())}_{abs(hash(prompt)) % 10000:04d}.png"
                                 file_path = output_path / filename
                                 with open(file_path, "wb") as f:
                                     f.write(base64.b64decode(image_b64))
@@ -110,7 +110,7 @@ class CloudflareProvider(ImageProvider):
                         )
                     else:
                         # Raw binary response
-                        filename = f"cloudflare_{int(time.time())}_{hash(prompt) % 10000}.png"
+                        filename = f"cloudflare_{int(time.time())}_{abs(hash(prompt)) % 10000:04d}.png"
                         file_path = output_path / filename
                         with open(file_path, "wb") as f:
                             f.write(response.content)

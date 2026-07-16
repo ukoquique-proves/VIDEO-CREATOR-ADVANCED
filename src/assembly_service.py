@@ -70,6 +70,9 @@ class AssemblyService:
             return []
 
         logger.info("[3/4] Generating subtitle segments …")
+        if config.subtitle_segments:
+            logger.info("Using explicit subtitle segments from config.")
+            return config.subtitle_segments
         return subtitle_adapter.generate_subtitle_segments(
             text=config.speech_content,
             total_duration=total_duration,
@@ -79,7 +82,7 @@ class AssemblyService:
     def assemble_and_burn_video(
         self,
         config: VideoConfiguration,
-        audio_path: str,
+        audio_path: Optional[str],
         visual_files: List[str],
         background_music: Optional[str],
         final_dir: Path,
@@ -112,7 +115,12 @@ class AssemblyService:
                 f"Video assembly failed: output file not found at {output_path}"
             )
 
-        if config.subtitles_enabled and segments and self._subtitle_backend:
+        if config.subtitles_enabled and segments:
+            if not self._subtitle_backend:
+                raise RuntimeError(
+                    "Subtitles are enabled, but no subtitle backend is available. "
+                    "Please check your installation and dependencies."
+                )
             logger.info("[+] Burning subtitles …")
             output_filename = f"{sanitize_filename(config.title)}.{config.output_format.value}"
             output_path = self._subtitle_backend.burn_subtitles(

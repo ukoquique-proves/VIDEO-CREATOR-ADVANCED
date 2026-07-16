@@ -2,6 +2,8 @@ import os
 from src.video_gateway import VideoGateway
 from src.orchestrator import VideoOrchestrator
 from src.schema import VideoConfiguration, VisualAssetConfig, VisualAssetType
+from src.image_providers.manager import ProviderManager
+from src.image_providers.registry import ProviderRegistry
 
 
 def test_orchestrator_accepts_gateway_and_uses_it(tmp_path):
@@ -55,6 +57,66 @@ def test_orchestrator_accepts_gateway_and_uses_it(tmp_path):
     assert os.path.exists(result["output_path"]) is True
 
 
+def test_orchestrator_forwards_provider_di_to_gateway_generate(tmp_path):
+    cfg = VideoConfiguration(
+        title="gw-di-test",
+        speech_content="hello",
+        visual_assets=VisualAssetConfig(asset_type=VisualAssetType.TEXT_PROMPTS, prompts=["a test"]),
+    )
+
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    captured = {}
+
+    def dummy_tts(text, output_path, language=None, method=None, rate=None, voice=None):
+        with open(output_path, "wb") as f:
+            f.write(b"audio")
+
+    def dummy_generate(prompts, output_dir, *, provider_manager=None, provider_registry=None, **kwargs):
+        captured["provider_manager"] = provider_manager
+        captured["provider_registry"] = provider_registry
+        p = os.path.join(output_dir, "img1.png")
+        with open(p, "wb") as f:
+            f.write(b"png")
+        return [p]
+
+    def dummy_copy(image_paths, output_dir):
+        return list(image_paths)
+
+    def dummy_modify(files, instr):
+        return files
+
+    def dummy_assemble(**kwargs):
+        out = os.path.join(kwargs["output_dir"], "final.mp4")
+        with open(out, "wb") as f:
+            f.write(b"mp4")
+        return out
+
+    gateway = VideoGateway(
+        tts=dummy_tts,
+        generate_images_from_prompts=dummy_generate,
+        copy_user_provided_media=dummy_copy,
+        modify_images=dummy_modify,
+        assemble_video=dummy_assemble,
+    )
+
+    manager = ProviderManager()
+    registry = ProviderRegistry()
+    orch = VideoOrchestrator(
+        output_dir=str(out_dir),
+        gateway=gateway,
+        provider_manager=manager,
+        provider_registry=registry,
+    )
+
+    result = orch.create_video(cfg)
+    assert result["output_path"]
+    assert os.path.exists(result["output_path"]) is True
+    assert captured["provider_manager"] is manager
+    assert captured["provider_registry"] is registry
+
+
 def test_orchestrator_accepts_legacy_gateway_and_uses_it(tmp_path):
     # Prepare a minimal configuration
     cfg = VideoConfiguration(
@@ -93,8 +155,8 @@ def test_orchestrator_accepts_legacy_gateway_and_uses_it(tmp_path):
 
     gateway = VideoGateway(
         tts=dummy_tts,
-        generate_from_prompts=dummy_generate,
-        copy_provided_images=dummy_copy,
+        generate_images_from_prompts=dummy_generate,
+        copy_user_provided_media=dummy_copy,
         modify_images=dummy_modify,
         assemble_video=dummy_assemble,
     )

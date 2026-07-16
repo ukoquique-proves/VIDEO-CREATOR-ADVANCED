@@ -263,10 +263,10 @@ class TestRegistryIntegration:
     
     def test_registry_with_image_adapter(self):
         """Provider registry should integrate with image adapter."""
-        from src.image_adapter import _get_provider_manager
+        from src.image_adapter import _get_fresh_provider_manager
         
         # Get manager (should auto-register providers)
-        manager = _get_provider_manager()
+        manager = _get_fresh_provider_manager()
         
         # Should have providers registered
         assert len(manager.providers) > 0
@@ -347,6 +347,37 @@ class TestProviderManagerTimeouts:
         assert result.success is True
         assert result.provider_name == "quick"
         assert elapsed < 1.5, f"Failover should not wait for the hung provider thread (elapsed {elapsed})"
+
+    def test_hung_provider_does_not_starve_later_calls(self):
+        """A hung provider should not consume all shared pool workers permanently."""
+        manager = ProviderManager()
+        manager.providers = [HangingProvider()]
+
+        manager.generate_image("prompt1", per_image_timeout=0.2)
+
+        manager.providers = [QuickProvider()]
+        result = manager.generate_image("prompt2", per_image_timeout=0.5)
+
+        assert result.success is True
+        assert result.provider_name == "quick"
+
+    def test_generate_image_reuses_thread_pool_across_calls(self):
+        """The manager should reuse a shared executor instead of creating a fresh one per image."""
+        manager = ProviderManager()
+        manager.providers = [QuickProvider()]
+
+        assert manager._executor is None
+        first = manager.generate_image("prompt1", per_image_timeout=1.0)
+        assert first.success is True
+        assert manager._executor is not None
+        executor_obj = manager._executor
+
+        second = manager.generate_image("prompt2", per_image_timeout=1.0)
+        assert second.success is True
+        assert manager._executor is executor_obj
+
+        manager.shutdown(wait=True)
+        assert manager._executor is None
 
     def test_generate_image_fails_over_when_provider_rate_limited(self):
         """Rate-limited providers should fail over to the next available provider."""

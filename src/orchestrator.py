@@ -24,6 +24,7 @@ import logging
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+import warnings
 
 from src.schema import VideoConfiguration, Orientation, VideoContext
 from src import config_loader
@@ -111,10 +112,9 @@ class VideoOrchestrator:
         self._tts = tts_callable  # Keep for backwards compatibility
 
         # Initialize Visual service
-        # Prefer new function names, fall back to old ones for backwards compatibility
         if gateway:
-            generate_fn = gateway.generate_images_from_prompts or gateway.generate_from_prompts
-            copy_fn = gateway.copy_user_provided_media or gateway.copy_provided_images
+            generate_fn = gateway.generate_images_from_prompts
+            copy_fn = gateway.copy_user_provided_media
         else:
             generate_fn = None
             copy_fn = None
@@ -188,30 +188,35 @@ class VideoOrchestrator:
         # Step 2: TTS
         audio_path = self.tts_service.run_tts_audio(config, workspace, context)
 
-        # Step 3: Duration
+        # Step 3: Prepare background music (we need this for duration resolution if no speech)
+        background_music = self.assembly_service.prepare_background_music(
+            config, workspace, uploaded_background_music
+        )
+
+        # Step 4: Duration
         total_duration = resolve_total_duration(
-            config.length_seconds, audio_path, logger
+            config.length_seconds, 
+            audio_path, 
+            background_music, 
+            logger
         )
         context.duration = total_duration
 
-        # Step 4: Visuals
+        # Step 5: Visuals
         visual_files = self.visual_service.prepare_visuals_with_modifications(
             config, workspace, aspect_ratio, final_width, final_height, uploaded_images
         )
         if not visual_files:
             raise ValueError("No visual assets available. Provide images or text prompts.")
 
-        # Step 5: Subtitles
+        # Step 6: Subtitles
         segments = self.assembly_service.generate_subtitle_segments(
             config, total_duration
         )
 
-        # Step 6: Background music and assembly
+        # Step 7: Assembly
         final_dir = workspace / "final"
         final_dir.mkdir(parents=True, exist_ok=True)
-        background_music = self.assembly_service.prepare_background_music(
-            config, workspace, uploaded_background_music
-        )
         visual_durations = _compute_visual_durations(
             config, visual_files, total_duration
         )
@@ -230,7 +235,7 @@ class VideoOrchestrator:
 
         logger.info("=== Video complete: %s ===", output_path)
 
-        # Step 7: Cleanup
+        # Step 8: Cleanup
         self.workspace_manager.cleanup_workspace(workspace)
 
         return {
@@ -241,41 +246,88 @@ class VideoOrchestrator:
         }
 
     # -------------------------------
-    # Backwards-compatible methods
+    # Backwards-compatible methods (deprecated)
     # -------------------------------
 
     def _resolve_output_directory(self, config: VideoConfiguration, default_output_dir: Path) -> Path:
+        warnings.warn(
+            "VideoOrchestrator._resolve_output_directory is deprecated and will be removed in a future version. Use WorkspaceManager.resolve_output_directory instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
         # For backwards compatibility, delegate to workspace_manager
         return self.workspace_manager.resolve_output_directory(config)
 
     def _validate_and_prepare_workspace(self, config: VideoConfiguration, base_dir: Optional[Path] = None) -> Path:
+        warnings.warn(
+            "VideoOrchestrator._validate_and_prepare_workspace is deprecated and will be removed in a future version. Use WorkspaceManager.validate_and_prepare_workspace instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
         return self.workspace_manager.validate_and_prepare_workspace(config, base_dir)
 
     def _run_tts_audio(self, config: VideoConfiguration, workspace: Path, context: Optional[VideoContext] = None) -> str:
+        warnings.warn(
+            "VideoOrchestrator._run_tts_audio is deprecated and will be removed in a future version. Use TTSService.run_tts_audio instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
         return self.tts_service.run_tts_audio(config, workspace, context)
 
     def _resolve_dimensions_and_orientation(self, config: VideoConfiguration) -> tuple:
+        warnings.warn(
+            "VideoOrchestrator._resolve_dimensions_and_orientation is deprecated and will be removed in a future version. Use the top-level function _resolve_dimensions_and_orientation instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
         return _resolve_dimensions_and_orientation(config)
 
     def _prepare_visuals(self, *args, **kwargs) -> List[str]:
+        warnings.warn(
+            "VideoOrchestrator._prepare_visuals is deprecated and will be removed in a future version. Use VisualService.prepare_visuals instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
         return self.visual_service.prepare_visuals(*args, **kwargs)
 
     def _prepare_visuals_with_modifications(self, *args, **kwargs) -> List[str]:
+        warnings.warn(
+            "VideoOrchestrator._prepare_visuals_with_modifications is deprecated and will be removed in a future version. Use VisualService.prepare_visuals_with_modifications instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
         return self.visual_service.prepare_visuals_with_modifications(*args, **kwargs)
 
     def _generate_subtitle_segments(self, config: VideoConfiguration, total_duration: Optional[float]) -> List[Dict]:
+        warnings.warn(
+            "VideoOrchestrator._generate_subtitle_segments is deprecated and will be removed in a future version. Use AssemblyService.generate_subtitle_segments instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
         return self.assembly_service.generate_subtitle_segments(config, total_duration)
 
     def _prepare_background_music(self, config: VideoConfiguration, workspace: Path) -> Optional[str]:
+        warnings.warn(
+            "VideoOrchestrator._prepare_background_music is deprecated and will be removed in a future version. Use AssemblyService.prepare_background_music instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
         return self.assembly_service.prepare_background_music(config, workspace)
 
     def _assemble_and_burn_video(self, *args, **kwargs) -> str:
+        warnings.warn(
+            "VideoOrchestrator._assemble_and_burn_video is deprecated and will be removed in a future version. Use AssemblyService.assemble_and_burn_video instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
         return self.assembly_service.assemble_and_burn_video(*args, **kwargs)
 
-    def _compute_visual_durations(self, *args, **kwargs) -> Optional[List[float]]:
-        return _compute_visual_durations(*args, **kwargs)
-
     def _cleanup_workspace(self, workspace: Path) -> None:
+        warnings.warn(
+            "VideoOrchestrator._cleanup_workspace is deprecated and will be removed in a future version. Use WorkspaceManager.cleanup_workspace instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
         self.workspace_manager.cleanup_workspace(workspace)
 
     # -------------------------------

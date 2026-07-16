@@ -128,18 +128,22 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     for index, seg in enumerate(segments, start=1):
         start = _seconds_to_ass_timestamp(seg["start"])
         end   = _seconds_to_ass_timestamp(seg["end"])
-        text  = seg["text"].strip().replace("\n", " ")
+        text  = seg["text"].strip()
         
-        # Force wrapping to max 2 lines
-        wrapped = textwrap.wrap(text, width=max_chars)
-        if len(wrapped) > 2:
+        # Split on existing newlines first, then wrap each if needed
+        lines = text.split("\n")
+        wrapped = []
+        for line in lines:
+            if line.strip():
+                wrapped.extend(textwrap.wrap(line, width=max_chars))
+        if len(wrapped) > 5:
             logger.warning(
-                "Subtitle segment %d was wrapped into %d lines and truncated to 2 lines. "
+                "Subtitle segment %d was wrapped into %d lines and truncated to 5 lines. "
                 "Remaining text will be omitted from burned-in subtitles.",
                 index,
                 len(wrapped),
             )
-        wrapped = wrapped[:2]
+        wrapped = wrapped[:5]
         display_text = "\\N".join(wrapped)
         
         events.append(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{display_text}")
@@ -211,51 +215,59 @@ def _ffmpeg_burn(video_path: str, ass_path: str, output_path: str) -> bool:
 # ---------------------------------------------------------------------------
 
 def render_subtitle_frame(
-    text: str,
-    width: int,
-    height: int,
-    font: ImageFont.FreeTypeFont,
-    font_color: str,
-    stroke_color: str,
-    stroke_width: int,
-    margin: int,
-    max_chars: int,
-) -> Image.Image:
-    """Test helper only; production rendering uses ASS via ffmpeg."""
-    lines = textwrap.wrap(text, width=max_chars) or [text]
-    lines = lines[:2] # Force 2 lines here too
-    
-    ascent, descent = font.getmetrics()
-    line_height   = ascent + descent
-    line_spacing  = int(line_height * 0.2)
-    total_text_height = len(lines) * line_height + (len(lines) - 1) * line_spacing
+        text: str,
+        width: int,
+        height: int,
+        font: ImageFont.FreeTypeFont,
+        font_color: str,
+        stroke_color: str,
+        stroke_width: int,
+        margin: int,
+        max_chars: int,
+    ) -> Image.Image:
+        """Test helper only; production rendering uses ASS via ffmpeg."""
+        # Return transparent frame for empty text
+        if not text or not text.strip():
+            return Image.new("RGBA", (width, height), (0, 0, 0, 0))
 
-    max_line_width = max(font.getlength(line) for line in lines)
-    pad_x = stroke_width + 16
-    pad_y = stroke_width + 12
-    box_w = int(max_line_width) + pad_x * 2
-    box_h = total_text_height + pad_y * 2
+        lines = text.split("\n") or [text]
+        wrapped = []
+        for line in lines:
+            if line.strip():
+                wrapped.extend(textwrap.wrap(line, width=max_chars))
+        lines = wrapped[:5] # Allow up to 5 lines here too
 
-    box_x = (width - box_w) // 2
-    scfg     = config_loader.subtitles()
-    position = scfg.get("position", "bottom")
-    box_y = (height - box_h) // 2 if position == "middle" else height - margin - box_h
+        ascent, descent = font.getmetrics()
+        line_height   = ascent + descent
+        line_spacing  = int(line_height * 0.2)
+        total_text_height = len(lines) * line_height + (len(lines) - 1) * line_spacing
 
-    frame = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    draw  = ImageDraw.Draw(frame)
-    draw.rounded_rectangle(
-        [box_x - 4, box_y - 4, box_x + box_w + 4, box_y + box_h + 4],
-        radius=12, fill=(0, 0, 0, 160)
-    )
+        max_line_width = max(font.getlength(line) for line in lines)
+        pad_x = stroke_width + 16
+        pad_y = stroke_width + 12
+        box_w = int(max_line_width) + pad_x * 2
+        box_h = total_text_height + pad_y * 2
 
-    y_cursor = box_y + pad_y
-    for line in lines:
-        line_w = font.getlength(line)
-        draw.text(
-            ((width - line_w) // 2, y_cursor),
-            line, font=font, fill=font_color,
-            stroke_width=stroke_width, stroke_fill=stroke_color
+        box_x = (width - box_w) // 2
+        scfg     = config_loader.subtitles()
+        position = scfg.get("position", "bottom")
+        box_y = (height - box_h) // 2 if position == "middle" else height - margin - box_h
+
+        frame = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        draw  = ImageDraw.Draw(frame)
+        draw.rounded_rectangle(
+            [box_x - 4, box_y - 4, box_x + box_w + 4, box_y + box_h + 4],
+            radius=12, fill=(0, 0, 0, 160)
         )
-        y_cursor += line_height + line_spacing
 
-    return frame
+        y_cursor = box_y + pad_y
+        for line in lines:
+            line_w = font.getlength(line)
+            draw.text(
+                ((width - line_w) // 2, y_cursor),
+                line, font=font, fill=font_color,
+                stroke_width=stroke_width, stroke_fill=stroke_color
+            )
+            y_cursor += line_height + line_spacing
+
+        return frame

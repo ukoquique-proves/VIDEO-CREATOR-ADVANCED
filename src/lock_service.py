@@ -18,12 +18,6 @@ def acquire_background_lock(lock_path: Path | str) -> bool:
     path = Path(lock_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    global _LOCK_FDS
-    try:
-        _LOCK_FDS
-    except NameError:
-        _LOCK_FDS = {}
-
     f = open(path, "a+", encoding="utf-8")
     try:
         fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -51,12 +45,6 @@ def acquire_background_lock(lock_path: Path | str) -> bool:
 
 def release_background_lock(lock_path: Path | str) -> None:
     """Release the pid-file guard for a finished generation."""
-    global _LOCK_FDS
-    try:
-        _LOCK_FDS
-    except NameError:
-        _LOCK_FDS = {}
-
     key = str(Path(lock_path))
     f = _LOCK_FDS.pop(key, None)
     if f is not None:

@@ -27,21 +27,16 @@ from src.image_providers.registry import (
 
 logger = logging.getLogger(__name__)
 
-# Global manager instance to persist provider health/failover state across calls (backward compatibility)
-_provider_manager: Optional[ProviderManager] = None
 
-
-def _get_provider_manager(registry=None) -> ProviderManager:
-    """Get or create the global ProviderManager instance with auto-registered providers."""
-    global _provider_manager
-    if _provider_manager is None:
-        _provider_manager = ProviderManager()
-        # Auto-register all available providers based on credentials
-        auto_register_providers(_provider_manager, registry)
-        # Log provider status for debugging
-        reg_to_log = registry if registry is not None else get_provider_registry()
-        reg_to_log.log_provider_status()
-    return _provider_manager
+def _get_fresh_provider_manager(registry=None) -> ProviderManager:
+    """Get a fresh ProviderManager instance with auto-registered providers (no global state)."""
+    manager = ProviderManager()
+    # Auto-register all available providers based on credentials
+    auto_register_providers(manager, registry)
+    # Log provider status for debugging
+    reg_to_log = registry if registry is not None else get_provider_registry()
+    reg_to_log.log_provider_status()
+    return manager
 
 
 # ---------------------------------------------------------------------------
@@ -95,10 +90,10 @@ def generate_images_from_prompts(
     if engine is None:
         engine = cfg.get("engine")
 
-    if engine in {"unsplash", "pexels"}:
+    if engine in {"unsplash", "pexels", "pixabay"}:
         raise ValueError(
             f"Unsupported image engine '{engine}'. "
-            "Unsplash and Pexels are not implemented yet. "
+            "Unsplash, Pexels and Pixabay are not implemented. "
             "Use cloudflare, siliconflow, pollinations, huggingface, or picsum."
         )
 
@@ -172,64 +167,7 @@ def copy_user_provided_media(
 
 from src.schema import VideoContext
 
-def generate_from_prompts(
-    *args,
-    **kwargs
-) -> List[str]:
-    """Generate one image per prompt and return a list of file paths.
 
-    DEPRECATED: Use generate_images_from_prompts() instead.
-
-    The preferred call style is keyword-based, for example:
-    generate_from_prompts(prompts=[...], output_dir="...", context=context)
-
-    Legacy positional calls that pass a VideoContext as the first argument are
-    still supported for compatibility, but they emit a DeprecationWarning.
-    """
-    warnings.warn(
-        "generate_from_prompts() is deprecated; use generate_images_from_prompts() instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    
-    provider_manager = kwargs.pop("provider_manager", None)
-    
-    if args and isinstance(args[0], VideoContext):
-        warnings.warn(
-            "Passing VideoContext positionally to generate_from_prompts() is deprecated; use context=... instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        context = args[0]
-        prompts = args[1] if len(args) > 1 else kwargs.pop("prompts", None)
-        output_dir = args[2] if len(args) > 2 else kwargs.pop("output_dir", None)
-        style = args[3] if len(args) > 3 else kwargs.pop("style", None)
-        aspect_ratio = args[4] if len(args) > 4 else kwargs.pop("aspect_ratio", None)
-        engine = args[5] if len(args) > 5 else kwargs.pop("engine", None)
-        width = args[6] if len(args) > 6 else kwargs.pop("width", None)
-        height = args[7] if len(args) > 7 else kwargs.pop("height", None)
-    else:
-        context = None
-        prompts = args[0] if len(args) > 0 else kwargs.pop("prompts", None)
-        output_dir = args[1] if len(args) > 1 else kwargs.pop("output_dir", None)
-        style = args[2] if len(args) > 2 else kwargs.pop("style", None)
-        aspect_ratio = args[3] if len(args) > 3 else kwargs.pop("aspect_ratio", None)
-        engine = args[4] if len(args) > 4 else kwargs.pop("engine", None)
-        width = args[5] if len(args) > 5 else kwargs.pop("width", None)
-        height = args[6] if len(args) > 6 else kwargs.pop("height", None)
-    
-    # Delegate to the new stable API
-    return generate_images_from_prompts(
-        prompts=prompts,
-        output_dir=output_dir,
-        style=style,
-        aspect_ratio=aspect_ratio,
-        engine=engine,
-        width=width,
-        height=height,
-        context=context,
-        provider_manager=provider_manager,
-    )
 
 
 def copy_provided_images(*args, **kwargs) -> List[str]:
@@ -310,8 +248,8 @@ def _try_native_image_generation(
     provider_manager: Optional[ProviderManager] = None,
     provider_registry: Optional["ProviderRegistry"] = None,
 ) -> Optional[List[str]]:
-    """Use the provided ProviderManager (or global one if not provided) to generate images with automatic failover."""
-    manager = provider_manager if provider_manager is not None else _get_provider_manager(registry=provider_registry)
+    """Use the provided ProviderManager (or a fresh one if not provided) to generate images with automatic failover."""
+    manager = provider_manager if provider_manager is not None else _get_fresh_provider_manager(registry=provider_registry)
     
     manager.output_dir = Path(output_dir)
     manager.output_dir.mkdir(parents=True, exist_ok=True)

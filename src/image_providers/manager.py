@@ -9,6 +9,7 @@ Tracks provider performance metrics for observability and optimization.
 
 import time
 import logging
+import os
 import concurrent.futures
 from typing import List, Optional, Dict, Any
 from pathlib import Path
@@ -29,12 +30,24 @@ class ProviderManager:
     Optionally tracks performance metrics for observability.
     """
     
-    def __init__(self, output_dir: str = "output/generated", metrics_collector: Optional[Any] = None):
+    def __init__(self, output_dir: str = "output/generated", 
+                 metrics_collector: Optional[Any] = None,
+                 min_workers: Optional[int] = None,
+                 max_workers: Optional[int] = None):
         self.providers: List[ImageProvider] = []
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.metrics_collector = metrics_collector  # Optional metrics for observability
+        self._executor: Optional[concurrent.futures.ThreadPoolExecutor] = None
+        self._executor_max_workers = 0
+        self._hung_thread_count = 0
         
+        # Read thread pool limits from environment variables or parameters
+        self.min_workers = min_workers if min_workers is not None else \
+            int(os.getenv("PROVIDER_MANAGER_MIN_WORKERS", "8"))
+        self.max_workers = max_workers if max_workers is not None else \
+            int(os.getenv("PROVIDER_MANAGER_MAX_WORKERS", "32"))
+
         # Detect cloud infrastructure and banned providers
         self.detector = cloud_detection.get_detector()
         if self.detector.is_cloud():
@@ -103,7 +116,22 @@ class ProviderManager:
             if provider.is_available():
                 available.append(provider)
         return available
-    
+
+    def _create_executor(self, max_workers: int) -> None:
+        """Create a new shared executor, shutting down the previous one if needed."""
+        if self._executor is not None:
+            self._executor.shutdown(wait=False)
+        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+        self._executor_max_workers = max_workers
+
+    def shutdown(self, wait: bool = True) -> None:
+        """Shut down the shared thread pool used for provider attempts."""
+        if self._executor is not None:
+            self._executor.shutdown(wait=wait)
+            self._executor = None
+            self._executor_max_workers = 0
+        self._hung_thread_count = 0
+
     def generate_image(self, prompt: str, width: int = 1080, height: int = 1920,
                        style: str = "photorealistic", per_image_timeout: float = 120.0, **kwargs) -> ProviderResult:
         """
@@ -155,82 +183,86 @@ class ProviderManager:
         # We purposely do not wait for threads to finish when a provider task times out,
         # because Python threads cannot be forcibly killed and a hanging provider should
         # not block failover to the next provider.
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(available)))
+        desired_workers = max(self.min_workers, len(available) + 4, self._hung_thread_count + len(available) + 2)
+        desired_workers = min(desired_workers, self.max_workers)
+        logger.debug(f"Using thread pool with {desired_workers} workers (min: {self.min_workers}, max: {self.max_workers})")
+        if self._executor is None or getattr(self._executor, '_shutdown', False) or desired_workers > self._executor_max_workers:
+            self._create_executor(desired_workers)
+        executor = self._executor
         last_error = None
-        try:
-            for i, provider in enumerate(available):
-                logger.info(f"Trying provider {i+1}/{len(available)}: {provider.name}...")
-                
-                # Add small delay between providers to avoid overwhelming services
-                if i > 0:
-                    time.sleep(0.5)
-                    self.failover_count += 1
-                
-                # Track timing for metrics
-                attempt_start = time.time()
+        for i, provider in enumerate(available):
+            logger.info(f"Trying provider {i+1}/{len(available)}: {provider.name}...")
+            
+            # Add small delay between providers to avoid overwhelming services
+            if i > 0:
+                time.sleep(0.5)
+                self.failover_count += 1
+            
+            # Track timing for metrics
+            attempt_start = time.time()
 
-                future = executor.submit(
-                    provider.generate,
-                    enhanced_prompt,
-                    width=width,
-                    height=height,
-                    output_dir=str(self.output_dir),
-                    **kwargs,
+            future = executor.submit(
+                provider.generate,
+                enhanced_prompt,
+                width=width,
+                height=height,
+                output_dir=str(self.output_dir),
+                **kwargs,
+            )
+            try:
+                result = future.result(timeout=per_image_timeout)
+            except concurrent.futures.TimeoutError:
+                logger.warning(
+                    f"{provider.name} timed out after {per_image_timeout}s — trying next provider."
                 )
-                try:
-                    result = future.result(timeout=per_image_timeout)
-                except concurrent.futures.TimeoutError:
-                    logger.warning(
-                        f"{provider.name} timed out after {per_image_timeout}s — trying next provider."
-                    )
-                    result = ProviderResult(
-                        success=False,
-                        error_message=f"Timed out after {per_image_timeout}s",
-                        provider_name=provider.name,
-                    )
-                    future.cancel()
-                except Exception as exc:
-                    logger.warning(
-                        f"{provider.name} failed with exception: {exc} — trying next provider."
-                    )
-                    result = ProviderResult(
-                        success=False,
-                        error_message=str(exc),
-                        provider_name=provider.name,
-                    )
+                result = ProviderResult(
+                    success=False,
+                    error_message=f"Timed out after {per_image_timeout}s",
+                    provider_name=provider.name,
+                )
+                cancelled = future.cancel()
+                if not cancelled and future.running():
+                    self._hung_thread_count += 1
+            except Exception as exc:
+                logger.warning(
+                    f"{provider.name} failed with exception: {exc} — trying next provider."
+                )
+                result = ProviderResult(
+                    success=False,
+                    error_message=str(exc),
+                    provider_name=provider.name,
+                )
 
-                attempt_duration_ms = (time.time() - attempt_start) * 1000
+            attempt_duration_ms = (time.time() - attempt_start) * 1000
 
-                if result.success:
-                    self.success_count += 1
-                    logger.info(f"Success with {provider.name}: {result.image_path}")
-                    
-                    # Track success in metrics
-                    if self.metrics_collector:
-                        self.metrics_collector.track_provider_attempt(
-                            provider.name, 
-                            success=True, 
-                            duration_ms=attempt_duration_ms
-                        )
-                    return result
-                else:
-                    logger.warning(f"Failed with {provider.name}: {result.error_message}")
-                    last_error = result
-                    
-                    # Track failure in metrics
-                    if self.metrics_collector:
-                        self.metrics_collector.track_provider_attempt(
-                            provider.name,
-                            success=False,
-                            duration_ms=attempt_duration_ms,
-                            error=result.error_message
-                        )
-                    
-                    # All failures fall through to the next provider. Rate-limited
-                    # providers do not require special handling here because the loop
-                    # already continues naturally after a failed attempt.
-        finally:
-            executor.shutdown(wait=False)
+            if result.success:
+                self.success_count += 1
+                logger.info(f"Success with {provider.name}: {result.image_path}")
+                
+                # Track success in metrics
+                if self.metrics_collector:
+                    self.metrics_collector.track_provider_attempt(
+                        provider.name, 
+                        success=True, 
+                        duration_ms=attempt_duration_ms
+                    )
+                return result
+            else:
+                logger.warning(f"Failed with {provider.name}: {result.error_message}")
+                last_error = result
+                
+                # Track failure in metrics
+                if self.metrics_collector:
+                    self.metrics_collector.track_provider_attempt(
+                        provider.name,
+                        success=False,
+                        duration_ms=attempt_duration_ms,
+                        error=result.error_message
+                    )
+                
+                # All failures fall through to the next provider. Rate-limited
+                # providers do not require special handling here because the loop
+                # already continues naturally after a failed attempt.
 
         # All providers failed
         return ProviderResult(
@@ -245,6 +277,9 @@ class ProviderManager:
                               delay_between: float = 1.0) -> List[ProviderResult]:
         """
         Generate multiple images with automatic failover for each.
+        Results are returned in the same order as the input prompts.
+        Output filenames include a zero-padded sequence index to preserve
+        sort order on disk (e.g. 001_, 002_, ...).
         """
         results = []
         
@@ -252,6 +287,30 @@ class ProviderManager:
             logger.info(f"[{i+1}/{len(prompts)}] Generating: {prompt[:50]}...")
             
             result = self.generate_image(prompt, width, height, style)
+
+            # Rename file to include zero-padded sequence index so that
+            # alphabetical sort on disk matches generation order.
+            if result.success and result.image_path:
+                import os
+                old_path = result.image_path
+                directory = os.path.dirname(old_path)
+                basename = os.path.basename(old_path)
+                new_path = os.path.join(directory, f"{i+1:03d}_{basename}")
+                try:
+                    os.rename(old_path, new_path)
+                    result = ProviderResult(
+                        success=result.success,
+                        image_path=new_path,
+                        provider_name=result.provider_name,
+                        status_code=result.status_code,
+                        error_message=result.error_message,
+                    )
+                except OSError as exc:
+                    logger.warning(
+                        "Could not add sequence prefix to %s (keeping original path): %s",
+                        old_path, exc,
+                    )
+
             results.append(result)
             
             # Delay between generations to respect rate limits

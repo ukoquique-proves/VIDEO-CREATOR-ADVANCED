@@ -1,55 +1,28 @@
 ## Current Backlog
 
-The list below is ordered by urgency and ease-of-fix. Recent refactors have already addressed part of the earlier backlog, so the remaining items focus on the highest-value improvements that still matter.
+The list below is ordered by urgency and ease-of-fix.
 
-### Recently addressed / partially addressed
+### Open
 
-- [x] Replace pid-file-only locking with an OS-level exclusive lock.
-  - Implemented with `fcntl.flock` plus PID/run UUID diagnostics in `src/main.py`.
+- [ ] **4. Finish replacing singleton usage in the provider registry** (medium)
+  - The registry global instance is kept for backwards compatibility, but all call sites should be migrated to explicit `ProviderRegistry()` construction + dependency injection.
+  - `reset_registry_for_testing()` has been added for test isolation, and `get_provider_registry()` is now marked deprecated for new code — but the actual migration of callers hasn't happened yet.
+  - See `src/image_providers/registry.py` docstring and ROADMAP.md → Architectural Notes.
 
-- [x] Add lightweight adapter validation through `VideoGateway` protocols.
-  - `src/video_gateway.py` now defines adapter protocols and validates provided callables at initialization.
+- [ ] **5. Finish the service extraction for the orchestrator** (medium)
+  - `VideoOrchestrator` still owns too much orchestration logic; the service layer (`visual_service.py`, `assembly_service.py`, `tts_service.py`, `duration_service.py`) is in place but the orchestrator hasn't been slimmed down to a thin coordinator yet.
 
-- [x] Start extracting orchestration responsibilities into services.
-  - New service modules now handle visuals, assembly/background music, and upload handling (`src/visual_service.py`, `src/assembly_service.py`, `src/upload_service.py`).
-
-- [x] Introduce a stable image-generation API.
-  - `src/image_adapter.py` now exposes `generate_images_from_prompts()` while keeping `generate_from_prompts()` as a deprecated shim.
-
-- [x] Extract duration resolution into its own service module (high / medium effort)
-  - Followed the established pattern already used by `visual_service.py`, `tts_service.py`, and `assembly_service.py`.
-  - Moved `_resolve_total_duration()` and `_probe_audio_duration()` out of `orchestrator.py` into a dedicated `duration_service.py`.
-
-- [x] Strengthen upload validation (medium)
-  - Added magic-byte sniffing for images and audio in `src/upload_service.py`.
-
-- [x] Decouple `ui.py` from CLI internals (medium)
-  - Created `src/lock_service.py` to expose lock coordination.
-  - Updated `ui.py` to import from lock service instead of `src.main`.
-
-- [x] Start replacing singleton/service-locator usage in the provider registry (medium)
-  - Added optional `provider_registry` parameter to relevant functions/classes for dependency injection.
-
-### High priority
-
-- [ ] 1. Finish replacing singleton usage in the provider registry (medium)
-  - The registry still has a global instance for backwards compatibility, but we should migrate all usages to explicit dependency injection.
-
-- [ ] 2. Finish the service extraction for the orchestrator (medium)
-  - The new services are a good start, but `VideoOrchestrator` still owns too much orchestration logic and should be slimmed down further.
-
-### Medium priority
-
-- [ ] 3. Clean up `VideoContext` (medium)
+- [ ] **7. Clean up `VideoContext`** (medium)
   - Separate domain data from execution concerns.
-  - The current structure still mixes runtime context (`merged_config`, `logger`) with domain data.
+  - The current structure still mixes runtime context (`merged_config`, `logger`) with domain data (`width`, `height`, `duration`).
 
-### Lower priority / bigger effort
+- [ ] **8. Replace subtitle timing estimation with timestamp-based alignment** (hard)
+  - Move away from word-rate duration approximation.
+  - Deferred to ROADMAP.md Phase 4 — design needed before implementation (Whisper dependency, latency tradeoff, architectural impact).
 
-- [ ] 4. Replace subtitle timing estimation with timestamp-based alignment (hard)
-  - Move away from word-rate duration approximation; consider Whisper-based forced alignment or other timestamped ASR.
+### Notes
 
-## Notes
-
-- Items are prioritized by both impact and implementation complexity.
-- Recently added services and upload handling mean some of the original architecture work is now partly complete.
+- Items 1–3 and 6 are fully resolved (see CHANGELOG.md `[Unreleased]`).
+- Items marked `[x]` in the previous version of this file have been removed.
+- Items 4 and 5 are tracked in ROADMAP.md Architectural Notes for deprecation planning.
+- Item 8 is tracked in ROADMAP.md Phase 4 as a deferred feature.

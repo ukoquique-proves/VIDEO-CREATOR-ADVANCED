@@ -79,20 +79,21 @@ class TestRenderSubtitleFrame:
 
     def test_long_segment_truncation_logs_warning(self, caplog):
         caplog.set_level(logging.WARNING)
+        # Create a text that will wrap into more than 5 lines
         segments = [
             {
                 "start": 0.0,
                 "end": 2.0,
-                "text": "This is a very long subtitle segment that will wrap into more than two lines when the max characters per line setting is small.",
+                "text": "This is a very long subtitle segment. This is a very long subtitle segment. This is a very long subtitle segment. This is a very long subtitle segment. This is a very long subtitle segment. This is a very long subtitle segment. This is a very long subtitle segment. This is a very long subtitle segment. This is a very long subtitle segment. This is a very long subtitle segment.",
             }
         ]
 
         subtitle_renderer._segments_to_ass(segments, width=1080, height=1920)
 
         assert any(
-            "truncated to 2 lines" in record.message
+            "truncated to 5 lines" in record.message
             for record in caplog.records
-        ), "Expected a warning when subtitle text is truncated to two lines"
+        ), "Expected a warning when subtitle text is truncated to five lines"
 
     def test_empty_text_returns_transparent_frame(self):
         """Empty text should produce a fully transparent frame without raising."""

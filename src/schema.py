@@ -93,6 +93,14 @@ class VideoConfiguration(BaseModel):
     subtitles_enabled: bool = Field(
         default=False, description="Toggle to burn subtitles onto the video"
     )
+    subtitle_segments: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description=(
+            "Explicit subtitle segments with start/end times. "
+            "Each segment should have 'text', 'start' (float seconds), "
+            "and 'end' (float seconds) keys."
+        )
+    )
 
     @field_validator("image_modification_instructions")
     def reject_unsupported_image_modification(cls, value):

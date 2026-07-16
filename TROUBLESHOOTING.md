@@ -1,5 +1,21 @@
 # Troubleshooting
 
+---
+
+## Resolved Issues
+
+### Background music is not used as the sole soundtrack (RESOLVED)
+
+- **Resolved in version**: Unreleased
+- **Symptoms**: The pipeline runs successfully, but the output video still behaves as if it were using a generated or placeholder audio track instead of fully relying on the supplied background music file.
+- **Fix**: The pipeline now properly:
+  - Uses `tts_service.run_tts_audio()` which returns `None` cleanly when there's no speech content
+  - Updates `_local_moviepy_assemble()` in `src/assembler_adapter.py` to use `background_music` alone as final audio when audio path is absent
+  - Updates duration resolution to use background music duration when no speech audio is present
+- **Related files**: `src/tts_service.py`, `src/assembler_adapter.py`, `src/duration_service.py`, `src/assembly_service.py`, `src/orchestrator.py`
+
+---
+
 ## Image generation hangs on cloud infrastructure (AWS / VPS)
 
 ### Síntomas
@@ -37,7 +53,9 @@ Si ese registro se vacía accidentalmente, esta protección queda desactivada y 
 
 Tanto Cloudflare Workers AI como Pollinations pueden tardar entre 10 y 120+ segundos por imagen dependiendo de la carga del servicio en ese momento. Cuando el proveedor primario (Cloudflare) está lento, el pipeline esperaba el timeout completo antes de hacer fallback. Con resoluciones altas (1920×1080) y prompts complejos, esto se multiplica por cada imagen del batch.
 
-El manager ahora envuelve cada llamada en un `ThreadPoolExecutor` con `per_image_timeout=120s`, lo que hace que el fallback se intente tan pronto como el timeout expire. Sin embargo, dado que Python no puede forzar la terminación de hilos en ejecución, los subprocesos bloqueados pueden seguir vivos en segundo plano; por eso es importante que los proveedores también establezcan límites de tiempo de socket y petición en su propia lógica.
+El manager ahora envuelve cada llamada en un `ThreadPoolExecutor` con `per_image_timeout=120s`, lo que hace que el fallback se intente tan pronto como el timeout expire. En versiones antiguas esto creaba un `ThreadPoolExecutor` nuevo por imagen y lo cerraba con `shutdown(wait=False)`, lo que podía dejar hilos bloqueados vivos en segundo plano y convertir un proveedor lento en una fuga de recursos.
+
+En la versión corregida el manager reutiliza un pool compartido para todas las llamadas y expone un `shutdown()` limpio para procesos de larga duración. Aun así, siga siendo importante que cada proveedor implemente sus propios límites de socket y de petición, porque Python no puede forzar el cierre de un hilo que está bloqueado en I/O.
 
 **3. Lock de proceso huérfano**
 

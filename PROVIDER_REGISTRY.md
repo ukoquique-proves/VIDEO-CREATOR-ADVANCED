@@ -121,14 +121,22 @@ All provider definitions in one place (`registry.py`):
 | HuggingFace SDXL | `huggingface_sd` | 50 | api_key | ✗ |
 | Picsum | `picsum` | 100 | none | ✓ |
 
+## Planned Providers (Not Implemented)
+
+The following providers are referenced in various docs or UI dropdowns but are not wired into the native provider library in this release. Do not set `image_engine` to these values — `src/image_adapter.py` will reject them and the registry will not instantiate them.
+
+- Unsplash — `unsplash` (planned, not implemented)
+- Pexels — `pexels` (planned, not implemented)
+- Pixabay — `pixabay` (planned, not implemented)
+
 ## Usage
 
 ### Basic Usage (Automatic)
 ```python
-from src.image_adapter import _get_provider_manager
+from src.image_adapter import _get_fresh_provider_manager
 
 # Just call this - providers auto-register
-manager = _get_provider_manager()
+manager = _get_fresh_provider_manager()
 
 # Provider status is logged at startup:
 # INFO - Registered Cloudflare
@@ -152,9 +160,8 @@ registry.register(ProviderSpec(
     priority=15  # Try before Pollinations
 ))
 
-# Auto-register all (including custom)
-from src.image_providers.registry import auto_register_providers
-auto_register_providers(manager)
+# Create a fresh manager, and auto-register all (including custom)
+manager = _get_fresh_provider_manager(registry=registry)
 ```
 
 ### Checking Registry Status
@@ -191,8 +198,8 @@ HUGGINGFACE_API_KEY=my-hf-token
    └─ Registers all built-in providers with specs
       (credentials, priority, always_add flag)
 
-2. _get_provider_manager() called
-   └─ Creates ProviderManager
+2. _get_fresh_provider_manager() called
+   └─ Creates a **fresh, new ProviderManager** for each generation
    └─ Calls auto_register_providers(manager)
       └─ Gets all available providers from registry
          (checks credentials from environment)
@@ -204,6 +211,15 @@ HUGGINGFACE_API_KEY=my-hf-token
    └─ Manager tries providers in order
    └─ Falls back automatically on failure
 ```
+
+### Important Trade-off
+
+Provider health state (rate-limit backoffs, consecutive-error counts) no longer persists across videos. This is intentional to ensure:
+- **Isolation**: No cross-contamination between video generations**
+- **Predictability**: Each video starts with a clean slate
+
+The trade-off is that if a provider fails for video A, video B will try again immediately, even if the failure was recent (e.g., a 429 from Pollinations). This is considered acceptable for most use cases.
+
 
 ## Adding a New Provider
 

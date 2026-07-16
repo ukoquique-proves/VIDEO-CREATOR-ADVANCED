@@ -30,6 +30,7 @@ class GenerateImagesFromPromptsCallable(Protocol):
         height: Optional[int] = None,
         context: Optional[Any] = None,
         provider_manager: Optional[Any] = None,
+        provider_registry: Optional[Any] = None,
     ) -> List[str]: ...
 
 
@@ -77,9 +78,6 @@ class VideoGateway:
     modify_images: Optional[ModifyImagesCallable] = None
     assemble_video: Optional[AssembleVideoCallable] = None
     subtitle_backend: Optional[object] = None
-    # Backwards compatibility
-    generate_from_prompts: Optional[GenerateImagesFromPromptsCallable] = None
-    copy_provided_images: Optional[CopyUserProvidedMediaCallable] = None
 
     def __post_init__(self):
         # If the gateway is used as a partial bundle (some callables set,
