@@ -40,7 +40,7 @@
 - [x] **Complete Video Assembly Decoupling**: Implemented a native MoviePy assembler as the default backend; legacy assembler fallbacks have been removed and no external Lingo integration is required.
 - [ ] **Scene-based Precision Mode**: Implement `VideoScene` model for granular speech-to-visual synchronization (per-scene TTS and timing). Reference: `TANDA_3/VideoCreation-06-FALLIDO-MODO_ESCENAS`
 - [ ] Whisper-based forced subtitle alignment (replace word-rate estimation)
-  > **Deferred — feature design needed.** The current word-rate model (`subtitle_adapter.py`) is a heuristic that distributes subtitle segments proportionally. Replacing it with Whisper forced-alignment is a meaningful feature (not a patch) because it requires: (a) adding `openai-whisper` or `faster-whisper` as a new optional dependency, (b) redesigning `subtitle_adapter.py` to run inference against the generated audio, and (c) deciding how to handle the latency tradeoff (Whisper adds ~10–30s per video). Design this separately before touching the existing path.
+  > **Deferred — feature design needed.** The current word-rate model (`subtitle_adapter.py`) is a heuristic that distributes subtitle segments proportionally. Replacing it with Whisper forced-alignment is a meaningful feature (not a patch) because it requires: (a) adding `faster-whisper` as a new optional dependency, (b) redesigning `subtitle_adapter.py` to run inference against the generated audio, and (c) deciding how to handle the latency tradeoff (Whisper adds ~10–30s per video). Design this separately before touching the existing path.
 - [ ] Ken Burns effect on images (pan + zoom animations)
 - [ ] Smooth crossfade transitions between scenes
 - [ ] Background music volume ducking during speech

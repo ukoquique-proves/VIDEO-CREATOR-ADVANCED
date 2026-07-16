@@ -239,10 +239,10 @@ def reset_registry_for_testing() -> None:
         _registry = None
 
 
-def auto_register_providers(manager, registry=None) -> None:
+def auto_register_providers(manager, registry=None):
     """Auto-register all available providers in the manager."""
     if registry is None:
-        registry = get_provider_registry()
+        registry = ProviderRegistry()
     
     logger.debug("Auto-registering providers based on available credentials...")
     

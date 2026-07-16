@@ -175,14 +175,15 @@ class VideoOrchestrator:
         merged_config = config_loader.load()
         final_width, final_height, aspect_ratio = _resolve_dimensions_and_orientation(config)
 
+        # VideoContext is kept for backwards compatibility with legacy adapter callers
+        # that read context.merged_config / context.logger via the *args dispatch path.
+        # New code should not rely on it.
         context = VideoContext(
             config=config,
             output_dir=output_base,
             workspace=workspace,
             width=final_width,
             height=final_height,
-            merged_config=merged_config,
-            logger=logger,
         )
 
         # Step 2: TTS
@@ -200,7 +201,7 @@ class VideoOrchestrator:
             background_music, 
             logger
         )
-        context.duration = total_duration
+        context.duration = total_duration  # For backwards compatibility only
 
         # Step 5: Visuals
         visual_files = self.visual_service.prepare_visuals_with_modifications(

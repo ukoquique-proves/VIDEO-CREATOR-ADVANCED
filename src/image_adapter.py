@@ -28,13 +28,13 @@ from src.image_providers.registry import (
 logger = logging.getLogger(__name__)
 
 
-def _get_fresh_provider_manager(registry=None) -> ProviderManager:
+def _get_fresh_provider_manager(registry=None):
     """Get a fresh ProviderManager instance with auto-registered providers (no global state)."""
     manager = ProviderManager()
     # Auto-register all available providers based on credentials
     auto_register_providers(manager, registry)
     # Log provider status for debugging
-    reg_to_log = registry if registry is not None else get_provider_registry()
+    reg_to_log = registry if registry is not None else ProviderRegistry()
     reg_to_log.log_provider_status()
     return manager
 

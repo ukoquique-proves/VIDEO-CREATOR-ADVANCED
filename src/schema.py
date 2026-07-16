@@ -149,16 +149,28 @@ class VideoConfiguration(BaseModel):
 
 @dataclass
 class VideoContext:
+    """Runtime context for a single video generation run.
+
+    Contains only domain data (dimensions, paths, duration) derived from
+    ``VideoConfiguration`` and the resolved workspace. Execution concerns
+    (logging, merged config) are no longer part of this dataclass — pass
+    them explicitly to the functions that need them.
+
+    ``merged_config`` and ``logger`` are kept as optional fields for
+    backwards compatibility with adapter code that still reads them via the
+    legacy ``*args`` dispatch path. New code should not populate or read
+    those fields.
+    """
     config: VideoConfiguration
     output_dir: Path
     workspace: Path
-    
+
     width: int
     height: int
-    
-    # Merged config (defaults from default_config.yaml + overrides from VideoConfiguration)
-    merged_config: Dict[str, Any]
-    
-    logger: logging.Logger
-    
+
     duration: Optional[float] = None
+
+    # Deprecated — kept for backwards compatibility with legacy adapter callers.
+    # Do not use in new code; pass merged_config / logger explicitly instead.
+    merged_config: Dict[str, Any] = None
+    logger: Optional[logging.Logger] = None
